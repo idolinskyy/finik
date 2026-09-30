@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Фінік
+Name[en]=Finik
+GenericName=Бухгалтерський облік
+GenericName[en]=Bookkeeping
+Comment=Документи, журнал проводок, каса, склад і звіти
+Exec=Finik
+Icon=finik
+Terminal=false
+StartupNotify=true
+StartupWMClass=Finik
+Categories=Office;Finance;Qt;
+Keywords=облік;бухгалтерія;каса;банк;
