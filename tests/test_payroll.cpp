@@ -48,7 +48,9 @@ Document payrollDoc(LedgerSession & session, QDate date, const QString & number,
 
 TEST_CASE("payroll rates 2026 are integer kopiyky")
 {
-  const Result<PayrollCharge> charge = computePayroll(Money::fromCents(1000000), false, true);
+  const QDate on(2026, 3, 31);
+  const Result<PayrollCharge> charge =
+      computePayroll(Money::fromCents(1000000), false, true, false, on);
   REQUIRE(charge);
   REQUIRE(charge.value().pit == Money::fromCents(180000));
   REQUIRE(charge.value().military == Money::fromCents(50000));
@@ -56,19 +58,30 @@ TEST_CASE("payroll rates 2026 are integer kopiyky")
   REQUIRE(charge.value().ssc == Money::fromCents(220000));
   REQUIRE(charge.value().sscBase == Money::fromCents(1000000));
 
-  const Result<PayrollCharge> floor = computePayroll(Money::fromCents(500000), false, true);
+  const Result<PayrollCharge> floor =
+      computePayroll(Money::fromCents(500000), false, true, false, on);
   REQUIRE(floor);
   REQUIRE(floor.value().sscBase == Money::fromCents(kMinWageCents2026));
   REQUIRE(floor.value().ssc == Money::fromCents(190234));
 
-  const Result<PayrollCharge> cap = computePayroll(Money::fromCents(200000000), false, true);
+  const Result<PayrollCharge> cap =
+      computePayroll(Money::fromCents(200000000), false, true, false, on);
   REQUIRE(cap);
   REQUIRE(cap.value().sscBase == Money::fromCents(kMinWageCents2026 * kSscMaxBaseMonths));
   REQUIRE(cap.value().ssc == Money::fromCents(3804680));
 
-  const Result<PayrollCharge> disabled = computePayroll(Money::fromCents(1000000), true, true);
+  const Result<PayrollCharge> disabled =
+      computePayroll(Money::fromCents(1000000), true, true, false, on);
   REQUIRE(disabled);
   REQUIRE(disabled.value().ssc == Money::fromCents(84100));
+}
+
+TEST_CASE("payroll rejects years without published norms")
+{
+  const Result<PayrollCharge> y2027 =
+      computePayroll(Money::fromCents(1000000), false, true, false, QDate(2027, 1, 31));
+  REQUIRE_FALSE(y2027);
+  REQUIRE(y2027.error().message.contains(QStringLiteral("2027")));
 }
 
 TEST_CASE("payroll posts 92/661/651/642/645 and journal total is gross plus ssc")

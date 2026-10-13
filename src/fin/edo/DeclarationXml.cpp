@@ -1,6 +1,6 @@
 #include "fin/edo/DeclarationXml.h"
 
-#include "fin/domain/Employee.h" // kMinWageCents2026, kSscMaxBaseMonths
+#include "fin/domain/Employee.h"
 
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -164,13 +164,17 @@ void splitPersonName(const QString & full, QString * last, QString * first, QStr
   *middle = parts.size() > 2 ? parts.mid(2).join(QLatin1Char(' ')) : QString();
 }
 
-Money sscBaseCapped(Money gross)
+Result<Money> sscBaseCapped(Money gross, int year)
 {
-  const std::int64_t maxBase = kMinWageCents2026 * kSscMaxBaseMonths;
-  if (gross.cents() > maxBase) {
-    return Money::fromCents(maxBase);
+  const Result<PayrollNorms> norms = payrollNormsForYear(year);
+  if (!norms) {
+    return Result<Money>::fail(norms.error());
   }
-  return gross;
+  const std::int64_t maxBase = norms.value().minWageCents * norms.value().sscMaxBaseMonths;
+  if (gross.cents() > maxBase) {
+    return Result<Money>::ok(Money::fromCents(maxBase));
+  }
+  return Result<Money>::ok(gross);
 }
 
 int calendarDaysInPeriod(const EmployeeTaxRow & emp, QDate from, QDate to)
@@ -558,7 +562,11 @@ Result<QString> buildAnnexEssD1Xml(const ConsolidatedTaxReport & monthly,
                     QString::number(calendarDaysInPeriod(emp, monthly.from, monthly.to)));
     writeRowNumNil(writer, QStringLiteral("T1RXXXXG15"), rowNo);
 
-    const Money base = sscBaseCapped(emp.gross);
+    const Result<Money> baseRes = sscBaseCapped(emp.gross, monthly.year);
+    if (!baseRes) {
+      return Result<QString>::fail(baseRes.error());
+    }
+    const Money base = baseRes.value();
     writeRowNumMoney(writer, QStringLiteral("T1RXXXXG16"), rowNo, emp.gross);
     writeRowNumMoney(writer, QStringLiteral("T1RXXXXG17"), rowNo, base);
     writeRowNumNil(writer, QStringLiteral("T1RXXXXG18"), rowNo);

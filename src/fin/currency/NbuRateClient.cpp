@@ -1,19 +1,85 @@
 #include "fin/currency/NbuRateClient.h"
 
+#include "fin/core/Checked.h"
 #include "fin/db/CurrencyRepository.h"
 
 #include <QEventLoop>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonValue>
+#include <QJsonParseError>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
 
 namespace fin {
+namespace {
+
+Result<std::int64_t> microsFromDecimalRate(QStringView text)
+{
+  const QStringView trimmed = text.trimmed();
+  if (trimmed.isEmpty()) {
+    return Result<std::int64_t>::fail(Error::validation(QStringLiteral("порожній курс НБУ")));
+  }
+  const qsizetype dot = trimmed.indexOf(QLatin1Char('.'));
+  const QStringView intView = dot < 0 ? trimmed : trimmed.left(dot);
+  const QStringView fracView = dot < 0 ? QStringView() : trimmed.mid(dot + 1);
+  if (intView.isEmpty()) {
+    return Result<std::int64_t>::fail(Error::validation(QStringLiteral("некоректний курс НБУ")));
+  }
+  for (const QChar ch : intView) {
+    if (!ch.isDigit()) {
+      return Result<std::int64_t>::fail(Error::validation(QStringLiteral("некоректний курс НБУ")));
+    }
+  }
+  for (const QChar ch : fracView) {
+    if (!ch.isDigit()) {
+      return Result<std::int64_t>::fail(Error::validation(QStringLiteral("некоректний курс НБУ")));
+    }
+  }
+  bool ok = false;
+  const qlonglong uah = intView.toLongLong(&ok);
+  if (!ok || uah < 0) {
+    return Result<std::int64_t>::fail(Error::validation(QStringLiteral("некоректний курс НБУ")));
+  }
+  QString frac = fracView.left(6).toString();
+  while (frac.size() < 6) {
+    frac.append(QLatin1Char('0'));
+  }
+  const qlonglong fracMicros = frac.toLongLong(&ok);
+  if (!ok) {
+    return Result<std::int64_t>::fail(Error::validation(QStringLiteral("некоректний курс НБУ")));
+  }
+  std::int64_t micros = 0;
+  Status st = addTo(micros, uah, QStringLiteral("курс НБУ"));
+  if (!st) {
+    return Result<std::int64_t>::fail(st.error());
+  }
+  for (int i = 0; i < 6; ++i) {
+    if (addOverflows(micros, micros)) {
+      return Result<std::int64_t>::fail(Error::overflow(QStringLiteral("курс НБУ")));
+    }
+    micros *= 10;
+  }
+  st = addTo(micros, fracMicros, QStringLiteral("курс НБУ"));
+  if (!st) {
+    return Result<std::int64_t>::fail(st.error());
+  }
+  if (fracView.size() > 6 && fracView.at(6).digitValue() >= 5) {
+    st = addTo(micros, 1, QStringLiteral("курс НБУ"));
+    if (!st) {
+      return Result<std::int64_t>::fail(st.error());
+    }
+  }
+  if (micros <= 0) {
+    return Result<std::int64_t>::fail(Error::validation(QStringLiteral("некоректний курс НБУ")));
+  }
+  return Result<std::int64_t>::ok(micros);
+}
+
+} // namespace
 
 NbuRateClient::NbuRateClient(QObject * parent) : QObject(parent) {}
 
@@ -39,47 +105,44 @@ Result<std::vector<CurrencyRate>> NbuRateClient::parseNbuJson(const QByteArray &
         QStringLiteral("некоректний JSON від API НБУ: %1").arg(parseError.errorString())));
   }
 
-  const QJsonArray array = doc.array();
-  std::vector<CurrencyRate> rates;
-  rates.reserve(static_cast<std::size_t>(array.size()));
+  (void)doc.array();
+  const QString jsonText = QString::fromUtf8(jsonData);
+  const QRegularExpression objRe(QStringLiteral("\\{[^{}]*\\}"));
+  const QRegularExpression ccRe(QStringLiteral("\"cc\"\\s*:\\s*\"([^\"]+)\""));
+  const QRegularExpression rateRe(QStringLiteral("\"rate\"\\s*:\\s*([0-9]+(?:\\.[0-9]+)?)"));
+  const QRegularExpression dateRe(QStringLiteral("\"exchangedate\"\\s*:\\s*\"([^\"]*)\""));
 
-  for (const QJsonValue & val : array) {
-    if (!val.isObject()) {
+  std::vector<CurrencyRate> rates;
+  auto it = objRe.globalMatch(jsonText);
+  while (it.hasNext()) {
+    const QString obj = it.next().captured();
+    const QRegularExpressionMatch ccMatch = ccRe.match(obj);
+    const QRegularExpressionMatch rateMatch = rateRe.match(obj);
+    if (!ccMatch.hasMatch() || !rateMatch.hasMatch()) {
       continue;
     }
-    const QJsonObject obj = val.toObject();
-    const QString code = obj.value(QStringLiteral("cc")).toString().trimmed().toUpper();
+    const QString code = ccMatch.captured(1).trimmed().toUpper();
     if (code.isEmpty()) {
       continue;
     }
-
-    // Парсинг дати з формату "DD.MM.YYYY"
+    const Result<std::int64_t> micros = microsFromDecimalRate(rateMatch.capturedView(1));
+    if (!micros || micros.value() <= 0) {
+      continue;
+    }
     QDate rateDate = fallbackDate;
-    const QString dateStr = obj.value(QStringLiteral("exchangedate")).toString().trimmed();
-    if (!dateStr.isEmpty()) {
-      const QDate parsedDate = QDate::fromString(dateStr, QStringLiteral("dd.MM.yyyy"));
+    const QRegularExpressionMatch dateMatch = dateRe.match(obj);
+    if (dateMatch.hasMatch()) {
+      const QDate parsedDate =
+          QDate::fromString(dateMatch.captured(1).trimmed(), QStringLiteral("dd.MM.yyyy"));
       if (parsedDate.isValid()) {
         rateDate = parsedDate;
       }
     }
-
-    // Точний парсинг курсу без дрейфу floating-point:
-    const double rawRate = obj.value(QStringLiteral("rate")).toDouble();
-    if (rawRate <= 0.0) {
-      continue;
-    }
-    const QString rateStr = QString::number(rawRate, 'f', 4);
-    const QStringList parts = rateStr.split(QLatin1Char('.'));
-    const std::int64_t intPart = parts[0].toLongLong();
-    const std::int64_t fracPart =
-        parts.size() > 1 ? parts[1].left(4).rightJustified(4, QLatin1Char('0')).toLongLong() : 0;
-    const std::int64_t rateMicros = intPart * ExchangeRate::kMicrosPerUah + fracPart * 100;
-
     CurrencyRate r;
     r.currencyCode = code;
     r.rateDate = rateDate;
     r.nominal = 1;
-    r.rateMicros = rateMicros;
+    r.rateMicros = micros.value();
     rates.push_back(r);
   }
 

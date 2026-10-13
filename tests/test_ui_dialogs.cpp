@@ -1,12 +1,15 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "ui/DocumentDialog.h"
+#include "ui/UiSupport.h"
 #include "support/Session.h"
 #include "fin/session/LedgerSession.h"
 #include "fin/db/AccountRepository.h"
 #include "fin/db/DocumentRepository.h"
 #include "fin/domain/Account.h"
+#include "fin/domain/Contract.h"
 #include "fin/domain/Document.h"
+#include "fin/domain/Employee.h"
 
 #include <QComboBox>
 #include <QDateEdit>
@@ -127,4 +130,71 @@ TEST_CASE("DocumentDialog validation and saving", "[ui][dialogs]")
     // Тепер документ має бути збережений і проведений
     REQUIRE(dialog.persisted() == true);
   }
+}
+
+TEST_CASE("DocumentDialog header has contract and employee for subconto", "[ui][dialogs]")
+{
+  auto session = test::openSession();
+  REQUIRE(session.accounts().seedChartIfEmpty());
+  const CounterpartyId cp = test::customer(session, QStringLiteral("ТОВ Субконто"));
+  Contract contract;
+  contract.counterpartyId = cp;
+  contract.number = QStringLiteral("SUB-1");
+  contract.name = QStringLiteral("Договір субконто");
+  contract.date = QDate(2026, 1, 1);
+  const Result<ContractId> cid = session.contracts().insert(contract);
+  REQUIRE(cid);
+  Employee employee;
+  employee.taxId = QStringLiteral("1111111111");
+  employee.name = QStringLiteral("Коваленко Субконто");
+  employee.hiredOn = QDate(2026, 1, 1);
+  employee.salary = Money::fromCents(1000000);
+  employee.isActive = true;
+  const Result<EmployeeId> eid = session.employees().insert(employee);
+  REQUIRE(eid);
+
+  Document doc;
+  doc.type = DocumentType::Manual;
+  doc.number = QStringLiteral("MAN-SUB");
+  doc.date = QDate(2026, 3, 1);
+  doc.counterpartyId = cp;
+  doc.contractId = cid.value();
+  doc.employeeId = eid.value();
+
+  DocumentDialog dialog(session, doc);
+  QCoreApplication::processEvents();
+  auto * contractCombo = dialog.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  auto * employeeCombo = dialog.findChild<QComboBox *>(QStringLiteral("employeeCombo"));
+  REQUIRE(contractCombo != nullptr);
+  REQUIRE(employeeCombo != nullptr);
+  REQUIRE(ui::selectedContract(contractCombo) == cid.value());
+  REQUIRE(ui::selectedEmployee(employeeCombo) == eid.value());
+
+  QPushButton * saveBtn = nullptr;
+  for (auto * btn : dialog.findChildren<QPushButton *>()) {
+    if (btn->text() == QStringLiteral("Зберегти")) {
+      saveBtn = btn;
+      break;
+    }
+  }
+  REQUIRE(saveBtn != nullptr);
+  saveBtn->click();
+  QCoreApplication::processEvents();
+  REQUIRE(dialog.persisted() == true);
+  const Result<Document> stored =
+      session.documents().findByTypeAndNumber(DocumentType::Manual, QStringLiteral("MAN-SUB"));
+  REQUIRE(stored);
+  REQUIRE(stored.value().contractId == cid.value());
+  REQUIRE(stored.value().employeeId == eid.value());
+  REQUIRE(stored.value().counterpartyId == cp);
+
+  doc.posted = true;
+  DocumentDialog posted(session, doc);
+  QCoreApplication::processEvents();
+  auto * postedContract = posted.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  auto * postedEmployee = posted.findChild<QComboBox *>(QStringLiteral("employeeCombo"));
+  REQUIRE(postedContract != nullptr);
+  REQUIRE(postedEmployee != nullptr);
+  REQUIRE(postedContract->isEnabled() == false);
+  REQUIRE(postedEmployee->isEnabled() == false);
 }

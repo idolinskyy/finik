@@ -84,12 +84,20 @@ DocumentDialog::DocumentDialog(LedgerSession & session, Document document, QWidg
   date_->setDisplayFormat(QStringLiteral("dd.MM.yyyy"));
   counterparty_ = new QComboBox;
   ui::fillCounterpartyCombo(counterparty_, session_, document_.counterpartyId, true);
+  contract_ = new QComboBox;
+  contract_->setObjectName(QStringLiteral("contractCombo"));
+  ui::fillContractCombo(contract_, session_, document_.counterpartyId, document_.contractId);
+  employee_ = new QComboBox;
+  employee_->setObjectName(QStringLiteral("employeeCombo"));
+  ui::fillEmployeeCombo(employee_, session_, document_.employeeId, true);
 
   auto * form = new QFormLayout;
   form->addRow(QStringLiteral("Тип"), type_);
   form->addRow(QStringLiteral("Номер"), number_);
   form->addRow(QStringLiteral("Дата"), date_);
   form->addRow(QStringLiteral("Контрагент"), counterparty_);
+  form->addRow(QStringLiteral("Договір"), contract_);
+  form->addRow(QStringLiteral("Працівник"), employee_);
 
   lines_ = new QTableWidget;
   lines_->setColumnCount(7);
@@ -209,7 +217,12 @@ DocumentDialog::DocumentDialog(LedgerSession & session, Document document, QWidg
   type_->setEnabled(false);
   connect(number_, &QLineEdit::textChanged, this, &DocumentDialog::refreshGate);
   connect(date_, &QDateEdit::dateChanged, this, &DocumentDialog::refreshGate);
-  connect(counterparty_, &QComboBox::currentIndexChanged, this, &DocumentDialog::refreshGate);
+  connect(counterparty_, &QComboBox::currentIndexChanged, this, [this]() {
+    ui::fillContractCombo(contract_, session_, ui::selectedCounterparty(counterparty_), {});
+    refreshGate();
+  });
+  connect(contract_, &QComboBox::currentIndexChanged, this, &DocumentDialog::refreshGate);
+  connect(employee_, &QComboBox::currentIndexChanged, this, &DocumentDialog::refreshGate);
   updatePostedUi();
   refreshGate();
 }
@@ -513,6 +526,8 @@ Status DocumentDialog::collect(Document & out) const
   out.number = number_->text().trimmed();
   out.date = date_->date();
   out.counterpartyId = ui::selectedCounterparty(counterparty_);
+  out.contractId = ui::selectedContract(contract_);
+  out.employeeId = ui::selectedEmployee(employee_);
   out.comment = comment_->toPlainText().trimmed();
   out.lines.clear();
   for (int row = 0; row < lines_->rowCount(); ++row) {
@@ -625,6 +640,8 @@ void DocumentDialog::updatePostedUi()
   number_->setEnabled(!posted);
   date_->setEnabled(!posted);
   counterparty_->setEnabled(!posted);
+  contract_->setEnabled(!posted);
+  employee_->setEnabled(!posted);
   lines_->setEnabled(!posted);
   comment_->setEnabled(!posted);
   type_->setEnabled(false);

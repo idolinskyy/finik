@@ -20,14 +20,33 @@
 
 namespace fin {
 
-inline constexpr std::int64_t kMinWageCents2026 = 864700; // мінзарплата 2026 р.
-inline constexpr int kSscMaxBaseMonths = 20; // максимальна база ЄСВ (20 МЗП)
-inline constexpr int kPitRateBp = 1800;      // ПДФО 18%
-inline constexpr int kMilitaryRateBp = 500;  // Військовий збір 5%
-inline constexpr int kSscRateBp = 2200;      // ЄСВ 22%
-inline constexpr int kSscDisabledRateBp = 841; // ЄСВ для осіб з інвалідністю 8.41%
-inline constexpr std::int64_t kPitBenefitCents2026 = 134000;          // ПСП 1 340 грн
-inline constexpr std::int64_t kPitBenefitThresholdCents2026 = 354000; // поріг ПСП 3 540 грн
+struct PayrollNorms
+{
+  int year = 0;
+  std::int64_t minWageCents = 0;
+  int sscMaxBaseMonths = 20;
+  int pitRateBp = 1800;
+  int militaryRateBp = 500;
+  int sscRateBp = 2200;
+  int sscDisabledRateBp = 841;
+  std::int64_t pitBenefitCents = 0;
+  std::int64_t pitBenefitThresholdCents = 0;
+};
+
+inline constexpr PayrollNorms kPayrollNorms2026{2026, 864700, 20, 1800, 500, 2200, 841, 134000,
+                                                354000};
+
+inline constexpr std::int64_t kMinWageCents2026 = kPayrollNorms2026.minWageCents;
+inline constexpr int kSscMaxBaseMonths = kPayrollNorms2026.sscMaxBaseMonths;
+inline constexpr int kPitRateBp = kPayrollNorms2026.pitRateBp;
+inline constexpr int kMilitaryRateBp = kPayrollNorms2026.militaryRateBp;
+inline constexpr int kSscRateBp = kPayrollNorms2026.sscRateBp;
+inline constexpr int kSscDisabledRateBp = kPayrollNorms2026.sscDisabledRateBp;
+inline constexpr std::int64_t kPitBenefitCents2026 = kPayrollNorms2026.pitBenefitCents;
+inline constexpr std::int64_t kPitBenefitThresholdCents2026 =
+    kPayrollNorms2026.pitBenefitThresholdCents;
+
+Result<PayrollNorms> payrollNormsForYear(int year);
 
 // Максимальна кількість календарних днів лікарняного за рахунок роботодавця
 inline constexpr int kSickLeaveEmployerDays = 5;
@@ -158,7 +177,7 @@ Money payrollNetPayable(const std::vector<DocumentLine> & lines,
 //   – мінімальної/максимальної бази ЄСВ;
 //   – ПСП (якщо gross ≤ kPitBenefitThresholdCents2026 та hasPitBenefit = true).
 Result<PayrollCharge> computePayroll(Money gross, bool disabledSsc, bool fullMonth,
-                                     bool hasPitBenefit = false);
+                                     bool hasPitBenefit, QDate on);
 
 // Норма робочих днів у місяці (стандартний 5-денний тиждень, спрощений алгоритм).
 // Рахується без урахування державних свят (для повноцінного виробничого

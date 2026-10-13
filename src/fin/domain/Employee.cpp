@@ -106,9 +106,29 @@ Money payrollNetPayable(const std::vector<DocumentLine> & lines,
 
 // Основний розрахунок: ПДФО, ВЗ, ЄСВ (з підтримкою ПСП)
 
-Result<PayrollCharge> computePayroll(Money gross, bool disabledSsc, bool fullMonth,
-                                     bool hasPitBenefit)
+Result<PayrollNorms> payrollNormsForYear(int year)
 {
+  if (year == kPayrollNorms2026.year) {
+    return Result<PayrollNorms>::ok(kPayrollNorms2026);
+  }
+  return Result<PayrollNorms>::fail(Error::validation(
+      QStringLiteral("норми ПДФО/ЄСВ для %1 року не задані — нарахування заблоковано")
+          .arg(year)));
+}
+
+Result<PayrollCharge> computePayroll(Money gross, bool disabledSsc, bool fullMonth,
+                                     bool hasPitBenefit, QDate on)
+{
+  if (!on.isValid()) {
+    return Result<PayrollCharge>::fail(
+        Error::validation(QStringLiteral("потрібна дата нарахування для ставок ПДФО/ЄСВ")));
+  }
+  const Result<PayrollNorms> normsRes = payrollNormsForYear(on.year());
+  if (!normsRes) {
+    return Result<PayrollCharge>::fail(normsRes.error());
+  }
+  const PayrollNorms norms = normsRes.value();
+
   if (!gross.isPositive()) {
     return Result<PayrollCharge>::fail(
         Error::validation(QStringLiteral("оклад має бути більшим за нуль")));
@@ -118,33 +138,34 @@ Result<PayrollCharge> computePayroll(Money gross, bool disabledSsc, bool fullMon
   // ПСП не зменшує базу ЄСВ та ВЗ.
   std::int64_t pitBase = gross.cents();
   std::int64_t pitBenefit = 0;
-  if (hasPitBenefit && gross.cents() <= kPitBenefitThresholdCents2026) {
-    pitBenefit = kPitBenefitCents2026;
-    pitBase = gross.cents() - kPitBenefitCents2026;
+  if (hasPitBenefit && gross.cents() <= norms.pitBenefitThresholdCents) {
+    pitBenefit = norms.pitBenefitCents;
+    pitBase = gross.cents() - norms.pitBenefitCents;
     if (pitBase < 0) {
       pitBase = 0;
     }
   }
 
-  const Result<std::int64_t> pitCents = mulDivRound(pitBase, kPitRateBp, 10000);
+  const Result<std::int64_t> pitCents = mulDivRound(pitBase, norms.pitRateBp, 10000);
   if (!pitCents) {
     return Result<PayrollCharge>::fail(pitCents.error());
   }
-  const Result<std::int64_t> militaryCents = mulDivRound(gross.cents(), kMilitaryRateBp, 10000);
+  const Result<std::int64_t> militaryCents =
+      mulDivRound(gross.cents(), norms.militaryRateBp, 10000);
   if (!militaryCents) {
     return Result<PayrollCharge>::fail(militaryCents.error());
   }
 
   // База ЄСВ: [мінзарплата (при повному місяці), 20 × МЗП]
   std::int64_t base = gross.cents();
-  const std::int64_t maxBase = kMinWageCents2026 * kSscMaxBaseMonths;
+  const std::int64_t maxBase = norms.minWageCents * norms.sscMaxBaseMonths;
   if (base > maxBase) {
     base = maxBase;
   }
-  if (fullMonth && base > 0 && base < kMinWageCents2026) {
-    base = kMinWageCents2026;
+  if (fullMonth && base > 0 && base < norms.minWageCents) {
+    base = norms.minWageCents;
   }
-  const int sscBp = disabledSsc ? kSscDisabledRateBp : kSscRateBp;
+  const int sscBp = disabledSsc ? norms.sscDisabledRateBp : norms.sscRateBp;
   const Result<std::int64_t> sscCents = mulDivRound(base, sscBp, 10000);
   if (!sscCents) {
     return Result<PayrollCharge>::fail(sscCents.error());
@@ -295,7 +316,7 @@ Result<VacationCalc> computeVacation(QSqlDatabase db, const Employee & employee,
 
   // Відпускні оподатковуються як зарплата
   const Result<PayrollCharge> taxes =
-      computePayroll(gross, employee.disabledSsc, true, employee.hasPitBenefit);
+      computePayroll(gross, employee.disabledSsc, true, employee.hasPitBenefit, from);
   if (!taxes) {
     return Result<VacationCalc>::fail(taxes.error());
   }
@@ -350,7 +371,7 @@ Result<SickLeaveCalc> computeSickLeave(QSqlDatabase db, const Employee & employe
   PayrollCharge taxes;
   if (employerGross.isPositive()) {
     const Result<PayrollCharge> t =
-        computePayroll(employerGross, employee.disabledSsc, false, employee.hasPitBenefit);
+        computePayroll(employerGross, employee.disabledSsc, false, employee.hasPitBenefit, from);
     if (!t) {
       return Result<SickLeaveCalc>::fail(t.error());
     }
@@ -385,7 +406,8 @@ Result<PayrollLine> payrollLineFor(const Employee & employee, QDate monthEnd)
   const QDate monthStart(monthEnd.year(), monthEnd.month(), 1);
   const bool fullMonth = employee.hiredOn <= monthStart;
   const Result<PayrollCharge> charge =
-      computePayroll(employee.salary, employee.disabledSsc, fullMonth, employee.hasPitBenefit);
+      computePayroll(employee.salary, employee.disabledSsc, fullMonth, employee.hasPitBenefit,
+                     monthEnd);
   if (!charge) {
     return Result<PayrollLine>::fail(charge.error());
   }

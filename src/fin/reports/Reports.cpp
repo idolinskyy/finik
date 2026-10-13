@@ -49,6 +49,14 @@ struct FxAgg
   }
 };
 
+Status negateTo(std::int64_t & accumulator, std::int64_t value, const QString & what)
+{
+  if (value == std::numeric_limits<std::int64_t>::min()) {
+    return Status::fail(Error::overflow(QStringLiteral("переповнення під час розрахунку: %1").arg(what)));
+  }
+  return addTo(accumulator, -value, what);
+}
+
 } // namespace
 
 TrialBalanceReport::TrialBalanceReport(QSqlDatabase db) : db_(std::move(db)) {}
@@ -642,16 +650,16 @@ Result<CounterpartyTurnover> CounterpartyTurnoverReport::build(AccountId account
     const std::int64_t amount = query.value(3).toLongLong();
     const bool isDebit = query.value(4).toLongLong() == accountId.value;
     if (date < fromIso) {
-      if (isDebit) {
-        agg.openDt += amount;
-      } else {
-        agg.openCt += amount;
+      Status add = addTo(isDebit ? agg.openDt : agg.openCt, amount,
+                         QStringLiteral("обороти контрагента"));
+      if (!add) {
+        return Result<CounterpartyTurnover>::fail(add.error());
       }
     } else if (date <= toIso) {
-      if (isDebit) {
-        agg.turnDt += amount;
-      } else {
-        agg.turnCt += amount;
+      Status add = addTo(isDebit ? agg.turnDt : agg.turnCt, amount,
+                         QStringLiteral("обороти контрагента"));
+      if (!add) {
+        return Result<CounterpartyTurnover>::fail(add.error());
       }
     }
   }
@@ -696,12 +704,30 @@ Result<CounterpartyTurnover> CounterpartyTurnoverReport::build(AccountId account
       return Result<CounterpartyTurnover>::fail(split.error());
     }
     report.rows.push_back(row);
-    totOpenDt += row.openingDebit.cents();
-    totOpenCt += row.openingCredit.cents();
-    totTurnDt += row.turnoverDebit.cents();
-    totTurnCt += row.turnoverCredit.cents();
-    totCloseDt += row.closingDebit.cents();
-    totCloseCt += row.closingCredit.cents();
+    Status add = addTo(totOpenDt, row.openingDebit.cents(), QStringLiteral("обороти контрагента"));
+    if (!add) {
+      return Result<CounterpartyTurnover>::fail(add.error());
+    }
+    add = addTo(totOpenCt, row.openingCredit.cents(), QStringLiteral("обороти контрагента"));
+    if (!add) {
+      return Result<CounterpartyTurnover>::fail(add.error());
+    }
+    add = addTo(totTurnDt, row.turnoverDebit.cents(), QStringLiteral("обороти контрагента"));
+    if (!add) {
+      return Result<CounterpartyTurnover>::fail(add.error());
+    }
+    add = addTo(totTurnCt, row.turnoverCredit.cents(), QStringLiteral("обороти контрагента"));
+    if (!add) {
+      return Result<CounterpartyTurnover>::fail(add.error());
+    }
+    add = addTo(totCloseDt, row.closingDebit.cents(), QStringLiteral("обороти контрагента"));
+    if (!add) {
+      return Result<CounterpartyTurnover>::fail(add.error());
+    }
+    add = addTo(totCloseCt, row.closingCredit.cents(), QStringLiteral("обороти контрагента"));
+    if (!add) {
+      return Result<CounterpartyTurnover>::fail(add.error());
+    }
   }
   report.totals.name = QStringLiteral("Разом");
   report.totals.openingDebit = Money::fromCents(totOpenDt);
@@ -784,15 +810,33 @@ Result<StockReportData> StockReport::build(QDate from, QDate to,
     const std::int64_t qty = query.value(5).toLongLong();
     const std::int64_t amount = query.value(6).toLongLong();
     if (date < fromIso) {
-      agg.openQty += qty;
-      agg.openAmt += amount;
+      Status add = addTo(agg.openQty, qty, QStringLiteral("склад"));
+      if (!add) {
+        return Result<StockReportData>::fail(add.error());
+      }
+      add = addTo(agg.openAmt, amount, QStringLiteral("склад"));
+      if (!add) {
+        return Result<StockReportData>::fail(add.error());
+      }
     } else if (date <= toIso) {
       if (qty >= 0) {
-        agg.inQty += qty;
-        agg.inAmt += amount;
+        Status add = addTo(agg.inQty, qty, QStringLiteral("склад"));
+        if (!add) {
+          return Result<StockReportData>::fail(add.error());
+        }
+        add = addTo(agg.inAmt, amount, QStringLiteral("склад"));
+        if (!add) {
+          return Result<StockReportData>::fail(add.error());
+        }
       } else {
-        agg.outQty += -qty;
-        agg.outAmt += -amount;
+        Status add = negateTo(agg.outQty, qty, QStringLiteral("склад"));
+        if (!add) {
+          return Result<StockReportData>::fail(add.error());
+        }
+        add = negateTo(agg.outAmt, amount, QStringLiteral("склад"));
+        if (!add) {
+          return Result<StockReportData>::fail(add.error());
+        }
       }
     }
   }
@@ -827,9 +871,15 @@ Result<StockReportData> StockReport::build(QDate from, QDate to,
           agg.unit = orderQuery.value(5).toString();
         }
         if (typeStr == QLatin1String("customer_order")) {
-          agg.reservedQty += qty;
+          Status add = addTo(agg.reservedQty, qty, QStringLiteral("склад"));
+          if (!add) {
+            return Result<StockReportData>::fail(add.error());
+          }
         } else if (typeStr == QLatin1String("supplier_order")) {
-          agg.orderedQty += qty;
+          Status add = addTo(agg.orderedQty, qty, QStringLiteral("склад"));
+          if (!add) {
+            return Result<StockReportData>::fail(add.error());
+          }
         }
       }
     }
@@ -863,21 +913,69 @@ Result<StockReportData> StockReport::build(QDate from, QDate to,
     row.inAmount = Money::fromCents(agg.inAmt);
     row.outQty = Quantity::fromMilli(agg.outQty);
     row.outAmount = Money::fromCents(agg.outAmt);
-    row.closingQty = Quantity::fromMilli(agg.openQty + agg.inQty - agg.outQty);
-    row.closingAmount = Money::fromCents(agg.openAmt + agg.inAmt - agg.outAmt);
+    std::int64_t closeQty = agg.openQty;
+    Status add = addTo(closeQty, agg.inQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = negateTo(closeQty, agg.outQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    std::int64_t closeAmt = agg.openAmt;
+    add = addTo(closeAmt, agg.inAmt, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = negateTo(closeAmt, agg.outAmt, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    row.closingQty = Quantity::fromMilli(closeQty);
+    row.closingAmount = Money::fromCents(closeAmt);
     row.reservedQty = Quantity::fromMilli(agg.reservedQty);
     row.orderedQty = Quantity::fromMilli(agg.orderedQty);
     report.rows.push_back(row);
-    totOpenQty += agg.openQty;
-    totOpenAmt += agg.openAmt;
-    totInQty += agg.inQty;
-    totInAmt += agg.inAmt;
-    totOutQty += agg.outQty;
-    totOutAmt += agg.outAmt;
-    totCloseQty += agg.openQty + agg.inQty - agg.outQty;
-    totCloseAmt += agg.openAmt + agg.inAmt - agg.outAmt;
-    totResQty += agg.reservedQty;
-    totOrdQty += agg.orderedQty;
+    add = addTo(totOpenQty, agg.openQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totOpenAmt, agg.openAmt, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totInQty, agg.inQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totInAmt, agg.inAmt, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totOutQty, agg.outQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totOutAmt, agg.outAmt, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totCloseQty, closeQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totCloseAmt, closeAmt, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totResQty, agg.reservedQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
+    add = addTo(totOrdQty, agg.orderedQty, QStringLiteral("склад"));
+    if (!add) {
+      return Result<StockReportData>::fail(add.error());
+    }
   }
   report.totals.name = QStringLiteral("Разом");
   report.totals.openingQty = Quantity::fromMilli(totOpenQty);
@@ -1703,11 +1801,23 @@ Result<AccountAnalysis> AccountAnalysisReport::build(AccountId accountId, QDate 
     const std::int64_t amt = turnQuery.value(2).toLongLong();
 
     if (dtAcc == accountId.value) {
-      corrMap[ctAcc].dtTurn += amt;
-      totalTurnDt += amt;
+      Status add = addTo(corrMap[ctAcc].dtTurn, amt, QStringLiteral("аналіз рахунку"));
+      if (!add) {
+        return Result<AccountAnalysis>::fail(add.error());
+      }
+      add = addTo(totalTurnDt, amt, QStringLiteral("аналіз рахунку"));
+      if (!add) {
+        return Result<AccountAnalysis>::fail(add.error());
+      }
     } else {
-      corrMap[dtAcc].ctTurn += amt;
-      totalTurnCt += amt;
+      Status add = addTo(corrMap[dtAcc].ctTurn, amt, QStringLiteral("аналіз рахунку"));
+      if (!add) {
+        return Result<AccountAnalysis>::fail(add.error());
+      }
+      add = addTo(totalTurnCt, amt, QStringLiteral("аналіз рахунку"));
+      if (!add) {
+        return Result<AccountAnalysis>::fail(add.error());
+      }
     }
   }
 

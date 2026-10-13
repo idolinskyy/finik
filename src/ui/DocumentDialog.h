@@ -51,6 +51,8 @@ class DocumentDialog : public QDialog
   QLineEdit * number_ = nullptr;
   QDateEdit * date_ = nullptr;
   QComboBox * counterparty_ = nullptr;
+  QComboBox * contract_ = nullptr;
+  QComboBox * employee_ = nullptr;
   QTableWidget * lines_ = nullptr;
   QTextEdit * comment_ = nullptr;
   QLabel * hint_ = nullptr;

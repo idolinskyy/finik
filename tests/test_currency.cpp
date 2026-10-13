@@ -521,6 +521,20 @@ TEST_CASE("NbuRateClient parses JSON response from bank.gov.ua accurately")
   CHECK(pln.rateMicros == 10'550'000);
 }
 
+TEST_CASE("NBU JSON rate is parsed from decimal text without float")
+{
+  const QByteArray json = R"([
+    {"cc":"USD","rate":41.123456,"exchangedate":"13.10.2026"},
+    {"cc":"EUR","rate":1.1,"exchangedate":"13.10.2026"}
+  ])";
+  const Result<std::vector<CurrencyRate>> rates =
+      NbuRateClient::parseNbuJson(json, QDate(2026, 10, 13));
+  REQUIRE(rates);
+  REQUIRE(rates.value().size() == 2u);
+  CHECK(rates.value()[0].rateMicros == 41'123'456);
+  CHECK(rates.value()[1].rateMicros == 1'100'000);
+}
+
 TEST_CASE("CurrencyRepository checks rate presence on specific date")
 {
   LedgerSession session = openSession();

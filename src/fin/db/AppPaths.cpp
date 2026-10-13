@@ -36,4 +36,10 @@ QString resolveDefaultDatabasePath()
   return nested;
 }
 
+QString secretKeyFilePath()
+{
+  return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) +
+         QStringLiteral("/finik-secrets.key");
+}
+
 } // namespace fin
