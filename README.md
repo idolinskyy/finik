@@ -68,7 +68,7 @@ SQLite (WAL). Qt кладе дані в `organizationName/applicationName` (об
 
 ## Документація
 
-- [PROJECT_DOCS.md](PROJECT_DOCS.md) — підсистеми, схема БД (v26), проведення.
+- [PROJECT_DOCS.md](PROJECT_DOCS.md) — підсистеми, схема БД (v27), проведення.
 
 ## Статус і відповідальність
 

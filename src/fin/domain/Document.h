@@ -83,7 +83,8 @@ struct DocumentLine
   IntangibleId intangibleId;     // картка НМА (для IaCommission/Depreciation/WriteOff)
   EmployeeId employeeId;         // працівник (для Payroll)
   WarehouseId warehouseId; // склад рядка (якщо відрізняється від складу документа)
-  CounterpartyId counterpartyId; // контрагент рядка (переоцінка 362/632; інакше — з документа)
+  CounterpartyId counterpartyId; // контрагент рядка (переоцінка 362/632; ЗС 361/631; інакше — з документа)
+  ContractId contractId; // договір рядка (ЗС 361/631; інакше — з шапки документа)
   Quantity quantity = Quantity::zero();
   Money unitPrice = Money::zero();
   int vatRateBp = 0;         // ставка ПДВ у базисних пунктах (2000 = 20%)

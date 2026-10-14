@@ -46,6 +46,8 @@ struct BankLine
 struct OpeningMoneyLine
 {
   AccountId accountId;
+  CounterpartyId counterpartyId;
+  ContractId contractId;
   Money debit = Money::zero();
   Money credit = Money::zero();
 };

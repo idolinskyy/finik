@@ -79,7 +79,7 @@ Result<SubcontoSet> extractSubcontoSet(QSqlDatabase db, AccountId accountId,
     } else if (setting.subcontoKindId == subconto_kinds::Employee) {
       val.entityId = line.employeeId ? line.employeeId.value : document.employeeId.value;
     } else if (setting.subcontoKindId == subconto_kinds::Contract) {
-      val.entityId = document.contractId.value;
+      val.entityId = line.contractId ? line.contractId.value : document.contractId.value;
     }
     set.at(setting.lineNo) = val;
   }

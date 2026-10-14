@@ -2,6 +2,7 @@
 
 #include "fin/db/UserRepository.h"
 #include "fin/domain/ChartCodes.h"
+#include "fin/domain/Contract.h"
 #include "fin/domain/DocumentBlueprint.h"
 #include "fin/domain/MonthClose.h"
 #include "fin/domain/Subconto.h"
@@ -196,6 +197,32 @@ TEST_CASE("Subconto: manual entry and opening balances need required analytics",
     REQUIRE(tb.value().rows.size() == 1);
     CHECK(tb.value().rows[0].subconto.entityId == buyer.value);
     CHECK(tb.value().rows[0].closingDebit == Money::fromCents(30000));
+  }
+
+  SECTION("opening balance line carries contract subconto")
+  {
+    const CounterpartyId buyer = customer(session, QStringLiteral("ТОВ Дебітор-договір"));
+    Contract contract;
+    contract.counterpartyId = buyer;
+    contract.number = QStringLiteral("ЗС-1");
+    contract.name = QStringLiteral("Договір залишку");
+    contract.date = QDate(2026, 1, 1);
+    const Result<ContractId> cid = session.contracts().insert(contract);
+    REQUIRE(cid);
+
+    Document doc =
+        makeDoc(DocumentType::OpeningBalance, QDate(2026, 1, 1), QStringLiteral("ЗС-ct"));
+    DocumentLine debt = line(acc361, zero, 40000);
+    debt.counterpartyId = buyer;
+    debt.contractId = cid.value();
+    doc.lines.push_back(debt);
+    const DocumentId id = saveAndPost(session, doc);
+
+    const Result<std::vector<LedgerEntry>> entries = session.ledger().listForDocument(id);
+    REQUIRE(entries);
+    REQUIRE(entries.value().size() == 1);
+    CHECK(entries.value()[0].debitSubconto.s1.entityId == buyer.value);
+    CHECK(entries.value()[0].debitSubconto.s2.entityId == cid.value().value);
   }
 
   SECTION("month close keeps aggregate entries without analytics")

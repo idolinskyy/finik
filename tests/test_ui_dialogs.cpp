@@ -2,6 +2,7 @@
 
 #include "ui/CashExpenseDialogs.h"
 #include "ui/DocumentDialog.h"
+#include "ui/TaxInvoiceDialog.h"
 #include "ui/TypedDialogs.h"
 #include "ui/UiSupport.h"
 #include "support/Session.h"
@@ -320,6 +321,114 @@ TEST_CASE("CashDocumentDialog header has contract for subconto", "[ui][dialogs][
 
   doc.posted = true;
   CashDocumentDialog posted(session, doc);
+  QCoreApplication::processEvents();
+  auto * postedContract = posted.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  REQUIRE(postedContract != nullptr);
+  REQUIRE(postedContract->isEnabled() == false);
+}
+
+TEST_CASE("OpeningDocumentDialog money row has counterparty and contract", "[ui][dialogs][opening]")
+{
+  auto session = test::openSession();
+  REQUIRE(session.accounts().seedChartIfEmpty());
+  const AccountId acc361 = test::account(session, "361");
+  const AccountId aux = test::account(session, "00");
+  const CounterpartyId cp = test::customer(session, QStringLiteral("ТОВ Залишок-договір"));
+  Contract contract;
+  contract.counterpartyId = cp;
+  contract.number = QStringLiteral("OP-1");
+  contract.name = QStringLiteral("Договір залишку");
+  contract.date = QDate(2026, 1, 1);
+  const Result<ContractId> cid = session.contracts().insert(contract);
+  REQUIRE(cid);
+
+  Document doc;
+  doc.type = DocumentType::OpeningBalance;
+  doc.number = QStringLiteral("OP-SUB");
+  doc.date = QDate(2026, 1, 1);
+  DocumentLine debt;
+  debt.debitAccountId = acc361;
+  debt.creditAccountId = aux;
+  debt.amount = Money::fromCents(15000);
+  debt.counterpartyId = cp;
+  debt.contractId = cid.value();
+  doc.lines.push_back(debt);
+
+  OpeningDocumentDialog dialog(session, doc);
+  QCoreApplication::processEvents();
+  auto * table = dialog.findChild<QTableWidget *>(QStringLiteral("openingMoneyTable"));
+  REQUIRE(table != nullptr);
+  REQUIRE(table->rowCount() >= 1);
+  auto * cpCombo = qobject_cast<QComboBox *>(table->cellWidget(0, 1));
+  auto * contractCombo = qobject_cast<QComboBox *>(table->cellWidget(0, 2));
+  REQUIRE(cpCombo != nullptr);
+  REQUIRE(contractCombo != nullptr);
+  REQUIRE(ui::selectedCounterparty(cpCombo) == cp);
+  REQUIRE(ui::selectedContract(contractCombo) == cid.value());
+
+  QPushButton * saveBtn = nullptr;
+  for (auto * btn : dialog.findChildren<QPushButton *>()) {
+    if (btn->text() == QStringLiteral("Зберегти")) {
+      saveBtn = btn;
+      break;
+    }
+  }
+  REQUIRE(saveBtn != nullptr);
+  saveBtn->click();
+  QCoreApplication::processEvents();
+  REQUIRE(dialog.persisted() == true);
+  const Result<Document> stored =
+      session.documents().findByTypeAndNumber(DocumentType::OpeningBalance, QStringLiteral("OP-SUB"));
+  REQUIRE(stored);
+  REQUIRE_FALSE(stored.value().lines.empty());
+  REQUIRE(stored.value().lines.front().counterpartyId == cp);
+  REQUIRE(stored.value().lines.front().contractId == cid.value());
+}
+
+TEST_CASE("TaxInvoiceDialog header has contract from source document", "[ui][dialogs][tax]")
+{
+  auto session = test::openSession();
+  REQUIRE(session.accounts().seedChartIfEmpty());
+  const CounterpartyId cp = test::customer(session, QStringLiteral("ТОВ ПН-договір"));
+  Contract contract;
+  contract.counterpartyId = cp;
+  contract.number = QStringLiteral("PN-1");
+  contract.name = QStringLiteral("Договір ПН");
+  contract.date = QDate(2026, 1, 1);
+  const Result<ContractId> cid = session.contracts().insert(contract);
+  REQUIRE(cid);
+
+  Document doc;
+  doc.type = DocumentType::TaxInvoice;
+  doc.number = QStringLiteral("PN-SUB");
+  doc.date = QDate(2026, 3, 1);
+  doc.counterpartyId = cp;
+  doc.contractId = cid.value();
+
+  TaxInvoiceDialog dialog(session, doc);
+  QCoreApplication::processEvents();
+  auto * contractCombo = dialog.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  REQUIRE(contractCombo != nullptr);
+  REQUIRE(ui::selectedContract(contractCombo) == cid.value());
+
+  QPushButton * saveBtn = nullptr;
+  for (auto * btn : dialog.findChildren<QPushButton *>()) {
+    if (btn->text() == QStringLiteral("Зберегти")) {
+      saveBtn = btn;
+      break;
+    }
+  }
+  REQUIRE(saveBtn != nullptr);
+  saveBtn->click();
+  QCoreApplication::processEvents();
+  REQUIRE(dialog.persisted() == true);
+  const Result<Document> stored =
+      session.documents().findByTypeAndNumber(DocumentType::TaxInvoice, QStringLiteral("PN-SUB"));
+  REQUIRE(stored);
+  REQUIRE(stored.value().contractId == cid.value());
+
+  doc.posted = true;
+  TaxInvoiceDialog posted(session, doc);
   QCoreApplication::processEvents();
   auto * postedContract = posted.findChild<QComboBox *>(QStringLiteral("contractCombo"));
   REQUIRE(postedContract != nullptr);

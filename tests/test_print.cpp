@@ -1,6 +1,7 @@
 #include "support/Session.h"
 
 #include "fin/domain/ChartCodes.h"
+#include "fin/domain/Contract.h"
 #include "fin/domain/DocumentBlueprint.h"
 #include "fin/domain/Employee.h"
 #include "fin/print/AmountInWords.h"
@@ -168,6 +169,14 @@ TEST_CASE("purchase note and bank payment html")
 
   Document bank = makeDoc(DocumentType::BankPayment, QDate(2026, 9, 9), QStringLiteral("РР-html"));
   bank.counterpartyId = mill;
+  Contract bankContract;
+  bankContract.counterpartyId = mill;
+  bankContract.number = QStringLiteral("12-П/2026");
+  bankContract.name = QStringLiteral("Договір поставки");
+  bankContract.date = QDate(2026, 1, 15);
+  const Result<ContractId> bankCid = session.contracts().insert(bankContract);
+  REQUIRE(bankCid);
+  bank.contractId = bankCid.value();
   BankLine pay;
   pay.amount = Money::fromCents(4000);
   pay.description = QStringLiteral("оплата рахунку");
@@ -182,6 +191,7 @@ TEST_CASE("purchase note and bank payment html")
   REQUIRE(slip.value().contains(QStringLiteral("UA953220010000000000000001234")));
   REQUIRE(slip.value().contains(QStringLiteral("UA783003350000000000000000001")));
   REQUIRE(slip.value().contains(QStringLiteral("content=\"landscape\"")));
+  REQUIRE(slip.value().contains(QStringLiteral("договір № 12-П/2026")));
   REQUIRE(forms.documentHtml(bank));
 }
 

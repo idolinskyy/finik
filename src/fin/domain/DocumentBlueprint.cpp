@@ -1131,11 +1131,15 @@ Result<std::vector<DocumentLine>> composeOpening(const std::vector<Account> & ac
       return Result<std::vector<DocumentLine>>::fail(Error::validation(
           QStringLiteral("рядок %1: заповніть або дебет, або кредит").arg(rowNo)));
     }
+    DocumentLine composed;
     if (hasDebit) {
-      lines.push_back(posting(row.accountId, aux, row.debit, QString()));
+      composed = posting(row.accountId, aux, row.debit, QString());
     } else {
-      lines.push_back(posting(aux, row.accountId, row.credit, QString()));
+      composed = posting(aux, row.accountId, row.credit, QString());
     }
+    composed.counterpartyId = row.counterpartyId;
+    composed.contractId = row.contractId;
+    lines.push_back(composed);
   }
   rowNo = 0;
   for (const GoodsLine & row : goods) {
@@ -2008,6 +2012,8 @@ std::vector<OpeningMoneyLine> extractOpeningMoneyLines(const std::vector<Documen
     } else {
       continue;
     }
+    row.counterpartyId = line.counterpartyId;
+    row.contractId = line.contractId;
     rows.push_back(row);
   }
   return rows;

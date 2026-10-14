@@ -105,7 +105,7 @@ Result<std::vector<DocumentLine>> DocumentRepository::loadLines(DocumentId id) c
                      "amount_cents, description, nomenclature_id, quantity_milli, "
                      "price_cents, fixed_asset_id, low_value_id, intangible_id, "
                      "vat_rate_bp, vat_cents, posting_date, employee_id, warehouse_id, "
-                     "counterparty_id "
+                     "counterparty_id, contract_id "
                      "FROM document_lines "
                      "WHERE document_id = :id ORDER BY line_no"));
   if (!status) {
@@ -159,6 +159,10 @@ Result<std::vector<DocumentLine>> DocumentRepository::loadLines(DocumentId id) c
     const std::int64_t cp = query.value(16).toLongLong();
     if (cp > 0) {
       line.counterpartyId = CounterpartyId{cp};
+    }
+    const std::int64_t contract = query.value(17).toLongLong();
+    if (contract > 0) {
+      line.contractId = ContractId{contract};
     }
     lines.push_back(line);
   }
@@ -499,9 +503,9 @@ Status DocumentRepository::replaceLines(DocumentId id, const std::vector<Documen
                      "debit_account_id, credit_account_id, amount_cents, description, "
                      "nomenclature_id, quantity_milli, price_cents, fixed_asset_id, "
                      "low_value_id, intangible_id, vat_rate_bp, vat_cents, posting_date, "
-                     "employee_id, warehouse_id, counterparty_id) "
+                     "employee_id, warehouse_id, counterparty_id, contract_id) "
                      "VALUES(:doc, :no, :dt, :ct, :amt, :desc, :nom, :qty, :price, :fa, "
-                     ":ms, :ia, :vatrate, :vat, :pdate, :emp, :wh, :cp)"));
+                     ":ms, :ia, :vatrate, :vat, :pdate, :emp, :wh, :cp, :contract)"));
   if (!status) {
     return status;
   }
@@ -556,6 +560,11 @@ Status DocumentRepository::replaceLines(DocumentId id, const std::vector<Documen
       insert.bind(QStringLiteral(":cp"), static_cast<qlonglong>(line.counterpartyId.value));
     } else {
       insert.bind(QStringLiteral(":cp"), QVariant());
+    }
+    if (line.contractId) {
+      insert.bind(QStringLiteral(":contract"), static_cast<qlonglong>(line.contractId.value));
+    } else {
+      insert.bind(QStringLiteral(":contract"), QVariant());
     }
     status = insert.exec();
     if (!status) {

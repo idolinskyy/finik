@@ -2,6 +2,7 @@
 
 #include "fin/db/AccountRepository.h"
 #include "fin/db/CompanyRepository.h"
+#include "fin/db/ContractRepository.h"
 #include "fin/db/CounterpartyRepository.h"
 #include "fin/db/EmployeeRepository.h"
 #include "fin/db/FixedAssetRepository.h"
@@ -64,6 +65,36 @@ QString wrapHtml(const QString & title, const QString & body, Paper paper)
 QString tableOpen()
 {
   return QStringLiteral("<table width=\"100%\" cellspacing=\"0\" cellpadding=\"3\">");
+}
+
+QString contractPurpose(QSqlDatabase db, ContractId id)
+{
+  if (!id) {
+    return {};
+  }
+  const Result<Contract> row = ContractRepository(db).findById(id);
+  if (!row) {
+    return {};
+  }
+  QString text = QStringLiteral("договір № %1").arg(row.value().number.trimmed());
+  if (row.value().date.isValid()) {
+    text += QStringLiteral(" від %1").arg(row.value().date.toString(QStringLiteral("dd.MM.yyyy")));
+  }
+  return text;
+}
+
+QString withContractPurpose(const QString & purpose, const QString & contractText)
+{
+  if (contractText.isEmpty()) {
+    return purpose;
+  }
+  if (purpose.contains(contractText, Qt::CaseInsensitive)) {
+    return purpose;
+  }
+  if (purpose.trimmed().isEmpty()) {
+    return contractText;
+  }
+  return purpose.trimmed() + QStringLiteral("; ") + contractText;
 }
 
 QString counterpartyName(QSqlDatabase db, CounterpartyId id)
@@ -719,6 +750,7 @@ Result<QString> PrintForms::bankPaymentHtml(const Document & document) const
       incoming ? QStringLiteral("Зарахування на рахунок") : QStringLiteral("Платіжна інструкція");
   const QString ours = company.value().heading();
   const QString party = counterpartyName(db_, document.counterpartyId);
+  const QString contractText = contractPurpose(db_, document.contractId);
   const QString payer = incoming ? dashIfEmpty(party) : ours;
   const QString payee = incoming ? ours : dashIfEmpty(party);
   QString body;
@@ -728,6 +760,10 @@ Result<QString> PrintForms::bankPaymentHtml(const Document & document) const
   body += QStringLiteral("<h2>№ %1 від %2</h2>")
               .arg(htmlEscape(document.number),
                    htmlEscape(document.date.toString(QStringLiteral("dd.MM.yyyy"))));
+  if (!contractText.isEmpty()) {
+    body += QStringLiteral("<div class=\"meta\"><b>Договір:</b> %1</div>")
+                .arg(htmlEscape(contractText));
+  }
   body += tableOpen();
   const QString ourBank = bankLine(company.value());
   const QString partyBank = counterpartyBank(db_, document.counterpartyId);
@@ -754,16 +790,18 @@ Result<QString> PrintForms::bankPaymentHtml(const Document & document) const
       "<tr><th width=\"75%\">Призначення платежу</th><th width=\"25%\">Сума, грн</th></tr>");
   for (const BankLine & row : rows) {
     body += QStringLiteral("<tr><td>%1</td><td class=\"num\">%2</td></tr>")
-                .arg(htmlEscape(row.description), htmlEscape(row.amount.toDisplay()));
+                .arg(htmlEscape(withContractPurpose(row.description, contractText)),
+                     htmlEscape(row.amount.toDisplay()));
   }
   body += QStringLiteral("<tr><td><b>Разом</b></td><td class=\"num\"><b>%1</b></td></tr>")
               .arg(htmlEscape(total.toDisplay()));
   body += QStringLiteral("</table>");
   body +=
       QStringLiteral("<div class=\"words\">Сума прописом: %1</div>").arg(htmlEscape(words.value()));
-  if (!document.comment.trimmed().isEmpty()) {
+  const QString purposeComment = withContractPurpose(document.comment, contractText);
+  if (!purposeComment.trimmed().isEmpty()) {
     body += QStringLiteral("<div class=\"meta\">Призначення: %1</div>")
-                .arg(htmlEscape(document.comment));
+                .arg(htmlEscape(purposeComment));
   }
   body += signatures(company.value());
   body += incoming ? QStringLiteral("<p class=\"muted\">Внутрішній бланк зарахування. Проведення — "

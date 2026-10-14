@@ -921,6 +921,26 @@ Status applyTaxOfficeMigration(QSqlDatabase db)
   return txn.commit();
 }
 
+Status applyDocumentLineContractMigration(QSqlDatabase db)
+{
+  Transaction txn(db);
+  if (!txn.started()) {
+    return txn.startError();
+  }
+  const QStringList stmts = {
+      QStringLiteral("ALTER TABLE document_lines ADD COLUMN contract_id INTEGER "
+                     "REFERENCES contracts(id) ON DELETE RESTRICT")};
+  Status status = applyStatements(db, stmts);
+  if (!status) {
+    return status;
+  }
+  status = recordMigration(db, 27);
+  if (!status) {
+    return status;
+  }
+  return txn.commit();
+}
+
 // Міграція 21: розширений кадровий облік (1.5 дорожньої карти).
 // Додає до таблиці employees поля посади, підрозділу, дати звільнення та
 // прапорець Податкової соціальної пільги (ПСП, п. 169 ПКУ).
@@ -1363,6 +1383,12 @@ Status Database::migrate()
   }
   if (current < 26) {
     status = applyTaxOfficeMigration(db_);
+    if (!status) {
+      return status;
+    }
+  }
+  if (current < 27) {
+    status = applyDocumentLineContractMigration(db_);
     if (!status) {
       return status;
     }

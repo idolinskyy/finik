@@ -11,6 +11,7 @@
 
 #include <QAbstractItemView>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDateEdit>
 #include <QFile>
 #include <QFileDialog>
@@ -78,6 +79,10 @@ TaxInvoiceDialog::TaxInvoiceDialog(LedgerSession & session, Document document, Q
   form->addRow(QStringLiteral("Номер"), number_);
   form->addRow(QStringLiteral("Дата ПН"), date_);
   form->addRow(QStringLiteral("Контрагент"), party_);
+  contract_ = new QComboBox;
+  contract_->setObjectName(QStringLiteral("contractCombo"));
+  ui::fillContractCombo(contract_, session_, document_.counterpartyId, document_.contractId);
+  form->addRow(QStringLiteral("Договір"), contract_);
   form->addRow(QStringLiteral("На підставі"), source_);
   form->addRow(registered_);
   form->addRow(QStringLiteral("Дата реєстрації"), registrationDate_);
@@ -173,6 +178,7 @@ TaxInvoiceDialog::TaxInvoiceDialog(LedgerSession & session, Document document, Q
   connect(f1, &QShortcut::activated, this, &TaxInvoiceDialog::openHelp);
   connect(number_, &QLineEdit::textChanged, this, &TaxInvoiceDialog::refreshGate);
   connect(date_, &QDateEdit::dateChanged, this, &TaxInvoiceDialog::refreshGate);
+  connect(contract_, &QComboBox::currentIndexChanged, this, &TaxInvoiceDialog::refreshGate);
   updatePostedUi();
   refreshGate();
 }
@@ -209,6 +215,7 @@ Status TaxInvoiceDialog::collect(Document & out) const
   out = document_;
   out.number = number_->text().trimmed();
   out.date = date_->date();
+  out.contractId = ui::selectedContract(contract_);
   out.comment = comment_->toPlainText().trimmed();
   if (registered_->isChecked()) {
     out.vatRegistrationDate = registrationDate_->date();
@@ -397,6 +404,7 @@ void TaxInvoiceDialog::updatePostedUi()
   const bool posted = document_.posted;
   number_->setEnabled(!posted);
   date_->setEnabled(!posted);
+  contract_->setEnabled(!posted);
   comment_->setEnabled(!posted);
   registered_->setEnabled(!posted || !document_.vatRegistrationDate.isValid());
   registrationDate_->setEnabled((!posted && registered_->isChecked()) ||

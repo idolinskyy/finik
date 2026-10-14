@@ -7,6 +7,7 @@
 #include <QDialog>
 
 class QCheckBox;
+class QComboBox;
 class QDateEdit;
 class QLabel;
 class QLineEdit;
@@ -46,6 +47,7 @@ class TaxInvoiceDialog : public QDialog
   QLineEdit * number_ = nullptr;
   QDateEdit * date_ = nullptr;
   QLineEdit * party_ = nullptr;
+  QComboBox * contract_ = nullptr;
   QLineEdit * source_ = nullptr;
   QCheckBox * registered_ = nullptr;
   QDateEdit * registrationDate_ = nullptr;

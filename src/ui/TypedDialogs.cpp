@@ -22,6 +22,7 @@
 #include <QLatin1String>
 #include <QLineEdit>
 #include <QMenu>
+#include <QObject>
 #include <QPushButton>
 #include <QShortcut>
 #include <QTableWidget>
@@ -449,10 +450,14 @@ OpeningDocumentDialog::OpeningDocumentDialog(LedgerSession & session, Document d
   form->addRow(QStringLiteral("Дата"), date_);
 
   money_ = new QTableWidget;
-  money_->setColumnCount(3);
-  money_->setHorizontalHeaderLabels(
-      {QStringLiteral("Рахунок"), QStringLiteral("Дебет"), QStringLiteral("Кредит")});
+  money_->setObjectName(QStringLiteral("openingMoneyTable"));
+  money_->setColumnCount(5);
+  money_->setHorizontalHeaderLabels({QStringLiteral("Рахунок"), QStringLiteral("Контрагент"),
+                                     QStringLiteral("Договір"), QStringLiteral("Дебет"),
+                                     QStringLiteral("Кредит")});
   money_->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
+  money_->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+  money_->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
   money_->verticalHeader()->setVisible(false);
 
   goods_ = new QTableWidget;
@@ -506,7 +511,8 @@ OpeningDocumentDialog::OpeningDocumentDialog(LedgerSession & session, Document d
   layout->addLayout(form);
   layout->addWidget(
       new QLabel(QStringLiteral("Рахунок 00 підставляється сам. Заповніть дебет або кредит, "
-                                "не обидва.")));
+                                "не обидва. Для 361/631/371/681 вкажіть контрагента і, за потреби, "
+                                "договір у рядку — інакше стартове сальдо без аналітики.")));
   layout->addLayout(moneyBar);
   layout->addWidget(money_, 1);
   layout->addLayout(goodsBar);
@@ -602,14 +608,28 @@ void OpeningDocumentDialog::addMoneyRow(const OpeningMoneyLine & row)
     }
   }
   account->setCurrentIndex(selected);
+  auto * counterparty = new QComboBox;
+  counterparty->setObjectName(QStringLiteral("openingCounterpartyCombo"));
+  ui::fillCounterpartyCombo(counterparty, session_, row.counterpartyId, true);
+  auto * contract = new QComboBox;
+  contract->setObjectName(QStringLiteral("openingContractCombo"));
+  ui::fillContractCombo(contract, session_, row.counterpartyId, row.contractId);
   auto * debit = new QLineEdit(row.debit.isZero() ? QString() : row.debit.toDisplay());
   auto * credit = new QLineEdit(row.credit.isZero() ? QString() : row.credit.toDisplay());
   debit->setAlignment(Qt::AlignRight);
   credit->setAlignment(Qt::AlignRight);
   money_->setCellWidget(index, 0, account);
-  money_->setCellWidget(index, 1, debit);
-  money_->setCellWidget(index, 2, credit);
+  money_->setCellWidget(index, 1, counterparty);
+  money_->setCellWidget(index, 2, contract);
+  money_->setCellWidget(index, 3, debit);
+  money_->setCellWidget(index, 4, credit);
   connect(account, &QComboBox::currentIndexChanged, this, &OpeningDocumentDialog::refreshGate);
+  connect(counterparty, &QComboBox::currentIndexChanged, this, [this, contract]() {
+    auto * cp = qobject_cast<QComboBox *>(sender());
+    ui::fillContractCombo(contract, session_, ui::selectedCounterparty(cp), {});
+    refreshGate();
+  });
+  connect(contract, &QComboBox::currentIndexChanged, this, &OpeningDocumentDialog::refreshGate);
   connect(debit, &QLineEdit::textChanged, this, &OpeningDocumentDialog::refreshGate);
   connect(credit, &QLineEdit::textChanged, this, &OpeningDocumentDialog::refreshGate);
 }
@@ -646,13 +666,21 @@ Status OpeningDocumentDialog::collect(Document & out) const
   std::vector<OpeningMoneyLine> money;
   for (int row = 0; row < money_->rowCount(); ++row) {
     auto * account = qobject_cast<QComboBox *>(money_->cellWidget(row, 0));
-    auto * debitEdit = qobject_cast<QLineEdit *>(money_->cellWidget(row, 1));
-    auto * creditEdit = qobject_cast<QLineEdit *>(money_->cellWidget(row, 2));
+    auto * counterparty = qobject_cast<QComboBox *>(money_->cellWidget(row, 1));
+    auto * contract = qobject_cast<QComboBox *>(money_->cellWidget(row, 2));
+    auto * debitEdit = qobject_cast<QLineEdit *>(money_->cellWidget(row, 3));
+    auto * creditEdit = qobject_cast<QLineEdit *>(money_->cellWidget(row, 4));
     if (account == nullptr || debitEdit == nullptr || creditEdit == nullptr) {
       return Status::fail(Error::validation(QStringLiteral("пошкоджений рядок рахунку")));
     }
     OpeningMoneyLine line;
     line.accountId = ui::selectedAccount(account);
+    if (counterparty != nullptr) {
+      line.counterpartyId = ui::selectedCounterparty(counterparty);
+    }
+    if (contract != nullptr) {
+      line.contractId = ui::selectedContract(contract);
+    }
     if (!debitEdit->text().trimmed().isEmpty()) {
       const Result<Money> debit = Money::fromDisplayString(debitEdit->text());
       if (!debit) {
