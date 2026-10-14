@@ -75,6 +75,9 @@ BankDocumentDialog::BankDocumentDialog(LedgerSession & session, Document documen
   direction_->setCurrentIndex(incoming ? 0 : 1);
   counterparty_ = new QComboBox;
   ui::fillCounterpartyCombo(counterparty_, session_, document_.counterpartyId, true);
+  contract_ = new QComboBox;
+  contract_->setObjectName(QStringLiteral("contractCombo"));
+  ui::fillContractCombo(contract_, session_, document_.counterpartyId, document_.contractId);
   currency_ = new QComboBox;
   ui::fillCurrencyCombo(currency_, session_, document_.currencyCode);
   currencyRate_ = new QLineEdit;
@@ -97,6 +100,7 @@ BankDocumentDialog::BankDocumentDialog(LedgerSession & session, Document documen
   form->addRow(QStringLiteral("Дата"), date_);
   form->addRow(QStringLiteral("Рух"), direction_);
   form->addRow(QStringLiteral("Контрагент"), counterparty_);
+  form->addRow(QStringLiteral("Договір"), contract_);
   form->addRow(QStringLiteral("Валюта"), currency_);
   form->addRow(QStringLiteral("Курс"), currencyRate_);
 
@@ -156,7 +160,8 @@ BankDocumentDialog::BankDocumentDialog(LedgerSession & session, Document documen
   layout->addWidget(
       new QLabel(QStringLiteral("Кореспонденція в рядку: покупець 361, аванс від покупця 681, "
                                 "постачальник 631, аванс постачальнику 371, каса 301, комісія 92 "
-                                "чи інший рахунок. Контрагент потрібен для 361, 631, 371 і 681.")));
+                                "чи інший рахунок. Контрагент потрібен для 361, 631, 371 і 681. "
+                                "Договір — якщо рахунок вимагає субконто договору.")));
   layout->addLayout(lineBar);
   layout->addWidget(table_, 1);
   layout->addWidget(new QLabel(QStringLiteral("Призначення платежу")));
@@ -210,7 +215,11 @@ BankDocumentDialog::BankDocumentDialog(LedgerSession & session, Document documen
   connect(number_, &QLineEdit::textChanged, this, &BankDocumentDialog::refreshGate);
   connect(date_, &QDateEdit::dateChanged, this, &BankDocumentDialog::refreshGate);
   connect(direction_, &QComboBox::currentIndexChanged, this, &BankDocumentDialog::refreshGate);
-  connect(counterparty_, &QComboBox::currentIndexChanged, this, &BankDocumentDialog::refreshGate);
+  connect(counterparty_, &QComboBox::currentIndexChanged, this, [this]() {
+    ui::fillContractCombo(contract_, session_, ui::selectedCounterparty(counterparty_), {});
+    refreshGate();
+  });
+  connect(contract_, &QComboBox::currentIndexChanged, this, &BankDocumentDialog::refreshGate);
   updatePostedUi();
   refreshGate();
 }
@@ -247,6 +256,7 @@ Status BankDocumentDialog::collect(Document & out) const
   out.number = number_->text().trimmed();
   out.date = date_->date();
   out.counterpartyId = ui::selectedCounterparty(counterparty_);
+  out.contractId = ui::selectedContract(contract_);
   out.comment = comment_->toPlainText().trimmed();
   if (currency_ != nullptr) {
     const QString code = ui::selectedCurrencyCode(currency_);
@@ -403,6 +413,7 @@ void BankDocumentDialog::updatePostedUi()
   date_->setEnabled(!posted);
   direction_->setEnabled(!posted);
   counterparty_->setEnabled(!posted);
+  contract_->setEnabled(!posted);
   if (currency_ != nullptr)
     currency_->setEnabled(!posted);
   if (currencyRate_ != nullptr)

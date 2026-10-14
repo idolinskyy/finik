@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "ui/CashExpenseDialogs.h"
 #include "ui/DocumentDialog.h"
+#include "ui/TypedDialogs.h"
 #include "ui/UiSupport.h"
 #include "support/Session.h"
 #include "fin/session/LedgerSession.h"
@@ -13,6 +15,7 @@
 
 #include <QComboBox>
 #include <QDateEdit>
+#include <QVariant>
 #include <QTableWidget>
 #include <QPushButton>
 #include <QLineEdit>
@@ -197,4 +200,128 @@ TEST_CASE("DocumentDialog header has contract and employee for subconto", "[ui][
   REQUIRE(postedEmployee != nullptr);
   REQUIRE(postedContract->isEnabled() == false);
   REQUIRE(postedEmployee->isEnabled() == false);
+}
+
+TEST_CASE("BankDocumentDialog header has contract for subconto", "[ui][dialogs][bank]")
+{
+  auto session = test::openSession();
+  REQUIRE(session.accounts().seedChartIfEmpty());
+  const CounterpartyId cp = test::customer(session, QStringLiteral("ТОВ Банк-договір"));
+  Contract contract;
+  contract.counterpartyId = cp;
+  contract.number = QStringLiteral("BNK-1");
+  contract.name = QStringLiteral("Договір банку");
+  contract.date = QDate(2026, 1, 1);
+  const Result<ContractId> cid = session.contracts().insert(contract);
+  REQUIRE(cid);
+
+  Document doc;
+  doc.type = DocumentType::BankPayment;
+  doc.number = QStringLiteral("BNK-SUB");
+  doc.date = QDate(2026, 3, 1);
+  doc.counterpartyId = cp;
+  doc.contractId = cid.value();
+
+  BankDocumentDialog dialog(session, doc);
+  QCoreApplication::processEvents();
+  auto * contractCombo = dialog.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  REQUIRE(contractCombo != nullptr);
+  REQUIRE(ui::selectedContract(contractCombo) == cid.value());
+
+  auto * table = dialog.findChild<QTableWidget *>();
+  REQUIRE(table != nullptr);
+  REQUIRE(table->rowCount() >= 1);
+  auto * amountEdit = qobject_cast<QLineEdit *>(table->cellWidget(0, 1));
+  REQUIRE(amountEdit != nullptr);
+  amountEdit->setText(QStringLiteral("100.00"));
+  QCoreApplication::processEvents();
+
+  QPushButton * saveBtn = nullptr;
+  for (auto * btn : dialog.findChildren<QPushButton *>()) {
+    if (btn->text() == QStringLiteral("Зберегти")) {
+      saveBtn = btn;
+      break;
+    }
+  }
+  REQUIRE(saveBtn != nullptr);
+  saveBtn->click();
+  QCoreApplication::processEvents();
+  REQUIRE(dialog.persisted() == true);
+  const Result<Document> stored =
+      session.documents().findByTypeAndNumber(DocumentType::BankPayment, QStringLiteral("BNK-SUB"));
+  REQUIRE(stored);
+  REQUIRE(stored.value().contractId == cid.value());
+  REQUIRE(stored.value().counterpartyId == cp);
+
+  doc.posted = true;
+  BankDocumentDialog posted(session, doc);
+  QCoreApplication::processEvents();
+  auto * postedContract = posted.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  REQUIRE(postedContract != nullptr);
+  REQUIRE(postedContract->isEnabled() == false);
+}
+
+TEST_CASE("CashDocumentDialog header has contract for subconto", "[ui][dialogs][cash]")
+{
+  auto session = test::openSession();
+  REQUIRE(session.accounts().seedChartIfEmpty());
+  const AccountId customers = test::account(session, "361");
+  const CounterpartyId cp = test::customer(session, QStringLiteral("ТОВ Каса-договір"));
+  Contract contract;
+  contract.counterpartyId = cp;
+  contract.number = QStringLiteral("CSH-1");
+  contract.name = QStringLiteral("Договір каси");
+  contract.date = QDate(2026, 1, 1);
+  const Result<ContractId> cid = session.contracts().insert(contract);
+  REQUIRE(cid);
+
+  Document doc;
+  doc.type = DocumentType::CashIn;
+  doc.number = QStringLiteral("CSH-SUB");
+  doc.date = QDate(2026, 3, 1);
+  doc.counterpartyId = cp;
+  doc.contractId = cid.value();
+
+  CashDocumentDialog dialog(session, doc);
+  QCoreApplication::processEvents();
+  auto * contractCombo = dialog.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  REQUIRE(contractCombo != nullptr);
+  REQUIRE(ui::selectedContract(contractCombo) == cid.value());
+
+  auto * table = dialog.findChild<QTableWidget *>();
+  REQUIRE(table != nullptr);
+  REQUIRE(table->rowCount() >= 1);
+  auto * accountCombo = qobject_cast<QComboBox *>(table->cellWidget(0, 0));
+  auto * amountEdit = qobject_cast<QLineEdit *>(table->cellWidget(0, 1));
+  REQUIRE(accountCombo != nullptr);
+  REQUIRE(amountEdit != nullptr);
+  const int accIdx = accountCombo->findData(QVariant::fromValue(static_cast<qlonglong>(customers.value)));
+  REQUIRE(accIdx >= 0);
+  accountCombo->setCurrentIndex(accIdx);
+  amountEdit->setText(QStringLiteral("100.00"));
+  QCoreApplication::processEvents();
+
+  QPushButton * saveBtn = nullptr;
+  for (auto * btn : dialog.findChildren<QPushButton *>()) {
+    if (btn->text() == QStringLiteral("Зберегти")) {
+      saveBtn = btn;
+      break;
+    }
+  }
+  REQUIRE(saveBtn != nullptr);
+  saveBtn->click();
+  QCoreApplication::processEvents();
+  REQUIRE(dialog.persisted() == true);
+  const Result<Document> stored =
+      session.documents().findByTypeAndNumber(DocumentType::CashIn, QStringLiteral("CSH-SUB"));
+  REQUIRE(stored);
+  REQUIRE(stored.value().contractId == cid.value());
+  REQUIRE(stored.value().counterpartyId == cp);
+
+  doc.posted = true;
+  CashDocumentDialog posted(session, doc);
+  QCoreApplication::processEvents();
+  auto * postedContract = posted.findChild<QComboBox *>(QStringLiteral("contractCombo"));
+  REQUIRE(postedContract != nullptr);
+  REQUIRE(postedContract->isEnabled() == false);
 }

@@ -125,11 +125,15 @@ CashDocumentDialog::CashDocumentDialog(LedgerSession & session, Document documen
   date_->setDisplayFormat(QStringLiteral("dd.MM.yyyy"));
   counterparty_ = new QComboBox;
   ui::fillCounterpartyCombo(counterparty_, session_, document_.counterpartyId, true);
+  contract_ = new QComboBox;
+  contract_->setObjectName(QStringLiteral("contractCombo"));
+  ui::fillContractCombo(contract_, session_, document_.counterpartyId, document_.contractId);
 
   auto * form = new QFormLayout;
   form->addRow(QStringLiteral("Номер"), number_);
   form->addRow(QStringLiteral("Дата"), date_);
   form->addRow(QStringLiteral("Контрагент"), counterparty_);
+  form->addRow(QStringLiteral("Договір"), contract_);
   receivedBy_ = new QLineEdit(document_.receivedBy);
   identityDoc_ = new QLineEdit(document_.identityDoc);
   if (document_.type == DocumentType::CashOut) {
@@ -160,9 +164,11 @@ CashDocumentDialog::CashDocumentDialog(LedgerSession & session, Document documen
   auto * hint =
       new QLabel(document_.type == DocumentType::CashIn
                      ? QStringLiteral("Кореспонденція — кредит (звідки надходження до каси). "
-                                      "Аванс від покупця — рахунок 681.")
+                                      "Аванс від покупця — рахунок 681. Договір у шапці — "
+                                      "субконто розрахунків, якщо воно обов’язкове.")
                      : QStringLiteral("Кореспонденція — дебет (куди списання з каси). "
-                                      "Аванс постачальнику — рахунок 371."));
+                                      "Аванс постачальнику — рахунок 371. Договір у шапці — "
+                                      "субконто розрахунків, якщо воно обов’язкове."));
   hint->setWordWrap(true);
   reason_ = new QLabel;
   reason_->setWordWrap(true);
@@ -238,7 +244,11 @@ CashDocumentDialog::CashDocumentDialog(LedgerSession & session, Document documen
   connect(f1, &QShortcut::activated, this, &CashDocumentDialog::openHelp);
   connect(number_, &QLineEdit::textChanged, this, &CashDocumentDialog::refreshGate);
   connect(date_, &QDateEdit::dateChanged, this, &CashDocumentDialog::refreshGate);
-  connect(counterparty_, &QComboBox::currentIndexChanged, this, &CashDocumentDialog::refreshGate);
+  connect(counterparty_, &QComboBox::currentIndexChanged, this, [this]() {
+    ui::fillContractCombo(contract_, session_, ui::selectedCounterparty(counterparty_), {});
+    refreshGate();
+  });
+  connect(contract_, &QComboBox::currentIndexChanged, this, &CashDocumentDialog::refreshGate);
   updatePostedUi();
   refreshGate();
 }
@@ -265,6 +275,7 @@ Status CashDocumentDialog::collect(Document & out) const
   out.number = number_->text().trimmed();
   out.date = date_->date();
   out.counterpartyId = ui::selectedCounterparty(counterparty_);
+  out.contractId = ui::selectedContract(contract_);
   out.comment = comment_->toPlainText().trimmed();
   out.receivedBy = receivedBy_ ? receivedBy_->text().trimmed() : QString();
   out.identityDoc = identityDoc_ ? identityDoc_->text().trimmed() : QString();
@@ -388,6 +399,7 @@ void CashDocumentDialog::updatePostedUi()
   number_->setEnabled(!posted);
   date_->setEnabled(!posted);
   counterparty_->setEnabled(!posted);
+  contract_->setEnabled(!posted);
   if (receivedBy_ != nullptr) {
     receivedBy_->setEnabled(!posted);
   }

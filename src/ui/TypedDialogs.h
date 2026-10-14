@@ -45,6 +45,7 @@ class BankDocumentDialog : public QDialog
   QDateEdit * date_ = nullptr;
   QComboBox * direction_ = nullptr;
   QComboBox * counterparty_ = nullptr;
+  QComboBox * contract_ = nullptr;
   QComboBox * currency_ = nullptr;
   QLineEdit * currencyRate_ = nullptr;
   QTableWidget * table_ = nullptr;

@@ -44,6 +44,7 @@ class CashDocumentDialog : public QDialog
   QLineEdit * number_ = nullptr;
   QDateEdit * date_ = nullptr;
   QComboBox * counterparty_ = nullptr;
+  QComboBox * contract_ = nullptr;
   QLineEdit * receivedBy_ = nullptr;
   QLineEdit * identityDoc_ = nullptr;
   QTableWidget * table_ = nullptr;
