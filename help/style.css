@@ -1,0 +1,51 @@
+body {
+  font-family: "Segoe UI", "Noto Sans", sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  color: #222;
+  margin: 0;
+  padding: 8px 16px 24px 16px;
+}
+h1 { font-size: 22px; margin-top: 0; color: #1a1a1a; }
+h2 { font-size: 17px; margin-top: 1.4em; color: #1a1a1a; border-bottom: 1px solid #eee; padding-bottom: 4px; }
+h3 { font-size: 15px; margin-top: 1.2em; color: #2c3e50; }
+a { color: #0b57d0; text-decoration: none; }
+code, .mono { font-family: ui-monospace, monospace; font-size: 13px; background: #f6f8fa; padding: 1px 4px; border: 1px solid #e1e4e8; }
+kbd { font-family: ui-monospace, monospace; font-size: 12px; background: #eaedf0; border: 1px solid #c0c6cc; padding: 2px 5px; }
+.shot {
+  border: 1px dashed #8a8a8a;
+  background: #f4f6f8;
+  padding: 12px 14px;
+  margin: 12px 0;
+  color: #333;
+}
+.shot b { display: block; margin-bottom: 6px; }
+table { border-collapse: collapse; margin: 8px 0 16px 0; width: 100%; }
+td, th { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+th { background: #eef2f6; color: #1a1a1a; font-weight: bold; }
+.callout { background: #fff8e5; border-left: 4px solid #e0a100; padding: 8px 12px; margin: 12px 0; }
+.callout-info { background: #e8f0fe; border-left: 4px solid #1a73e8; padding: 8px 12px; margin: 12px 0; }
+.figure { margin: 12px 0 18px 0; }
+.figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #c5cdd6;
+  background: #fff;
+}
+.figure span {
+  display: block;
+  color: #555;
+  font-size: 13px;
+  margin-top: 6px;
+}
+.brand {
+  margin: 0 0 8px 0;
+}
+.brand img {
+  display: block;
+  width: 96px;
+  height: 96px;
+  border: none;
+  background: transparent;
+}

@@ -1,0 +1,41 @@
+# Third-party notices for Фінік (Finik)
+
+This product includes third-party materials. The application itself is licensed
+under the GNU General Public License v3 (see LICENSE). The components below
+retain their own licenses.
+
+## Inter font
+
+Files: help/fonts/Inter-Regular.otf
+(also referenced from help/help.qrc; loaded at runtime in src/main.cpp)
+
+Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+
+Licensed under the SIL Open Font License, Version 1.1.
+Full text: help/fonts/OFL.txt
+https://scripts.sil.org/OFL
+
+## Material Design Icons (SVG)
+
+Files: help/icons/\*.svg
+(bundled via help/help.qrc)
+
+Based on Material Design Icons (Apache License 2.0), obtained from the
+marella/material-design-icons distribution of Google's Material Icons:
+https://github.com/marella/material-design-icons
+https://github.com/google/material-design-icons
+
+Copyright Google LLC
+Licensed under the Apache License, Version 2.0:
+http://www.apache.org/licenses/LICENSE-2.0
+
+A short Apache-2.0 notice is also in help/icons/NOTICE.
+
+## System / build dependencies (not vendored in this tree)
+
+- Qt 6 — The Qt Company Ltd., https://www.qt.io/
+  Used as a dynamically linked library (LGPL v3 / GPL v3 / commercial, depending
+  on your Qt build). In the application: Help → About Qt. License texts ship
+  with the Qt installation.
+- Catch2 v3 — https://github.com/catchorg/Catch2 (BSL-1.0)
+- SQLite 3 — used via Qt SQL driver (https://www.sqlite.org/)

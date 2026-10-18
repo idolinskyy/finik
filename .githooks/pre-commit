@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Fast pre-commit: clang-format on staged C++ files only.
+# Enable once per clone:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+if ! command -v clang-format >/dev/null 2>&1; then
+  echo "pre-commit: clang-format not installed — skip" >&2
+  exit 0
+fi
+
+mapfile -t files < <(git diff --cached --name-only --diff-filter=ACMR \
+  | grep -E '\.(cpp|h|hpp)$' || true)
+
+if [[ ${#files[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+bad=0
+for f in "${files[@]}"; do
+  [[ -f "$f" ]] || continue
+  if ! clang-format --dry-run --Werror "$f" >/dev/null 2>&1; then
+    echo "pre-commit: reformat needed: $f" >&2
+    bad=1
+  fi
+done
+
+if [[ "$bad" -ne 0 ]]; then
+  echo "pre-commit: run ./scripts/check.sh format-fix && git add -u" >&2
+  exit 1
+fi
