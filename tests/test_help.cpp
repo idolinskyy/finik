@@ -112,6 +112,7 @@ TEST_CASE("help pages in qrc exist, link to each other, and name the product")
       {"from-1c.html", "зарплати"},
       {"from-1c.html", "M.E.doc"},
       {"from-1c.html", "захист від створення дублікатів"},
+      {"from-1c.html", "договір з колонки або призначення"},
       {"currency.html", "десятковий рядок"},
       {"journal.html", "703"},
       {"journal.html", "На підставі"},
@@ -134,6 +135,7 @@ TEST_CASE("help pages in qrc exist, link to each other, and name the product")
       {"bank.html", "163"},
       {"bank.html", "Договір:"},
       {"bank.html", "номер підставляється в призначення"},
+      {"bank.html", "Договір з виписки:"},
       {"from-1c.html", "Поле «Договір» у шапці"},
       {"posting.html", "Рахунок на оплату"},
       {"posting.html", "Головній книзі"},
@@ -151,6 +153,7 @@ TEST_CASE("help pages in qrc exist, link to each other, and name the product")
       {"reports.html", "ОСВ"},
       {"reports.html", "shots/osv.png"},
       {"reports.html", "shots/subconto-osv.png"},
+      {"reports.html", "Усі виміри"},
       {"reports.html", "shots/cashflow.png"},
       {"reports.html", "Рух коштів"},
       {"reports.html", "рентабельність"},
@@ -245,6 +248,9 @@ TEST_CASE("help pages in qrc exist, link to each other, and name the product")
       {"search.html", "працівник"},
       {"index.html", "Про Qt"},
       {"index.html", "одне робоче місце"},
+      {"index.html", "docs/DEVELOPER_GUIDE.md"},
+      {"index.html", "scripts/package.sh"},
+      {"backup.html", "scripts/package.sh"},
       {"from-1c.html", "одне робоче місце"},
       {"security.html", "не клієнт"},
       {"security.html", "finik-secrets.key"},
@@ -292,6 +298,19 @@ TEST_CASE("help sidebar lists every page and keeps the interface Ukrainian")
       REQUIRE_FALSE(html.contains(QString::fromLatin1(word)));
     }
   }
+}
+
+TEST_CASE("developer guide exists and is linked from help", "[help][docs]")
+{
+  const QString path =
+      QDir(QString::fromUtf8(FIN_SOURCE_DIR)).filePath(QStringLiteral("docs/DEVELOPER_GUIDE.md"));
+  REQUIRE(QFile::exists(path));
+  const QString md = readFile(path);
+  REQUIRE(md.contains(QStringLiteral("дебет")));
+  REQUIRE(md.contains(QStringLiteral("ledger_entries")));
+  REQUIRE(md.contains(QStringLiteral("PostingEngine")));
+  REQUIRE(md.contains(QStringLiteral("перша подія")));
+  REQUIRE(md.contains(QStringLiteral("kSchemaVersion")));
 }
 
 TEST_CASE("F1 topicForNavRow matches MainWindow nav ids")

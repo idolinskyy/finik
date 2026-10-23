@@ -82,6 +82,7 @@ CMakeLists.txt.user*
 .rcc/
 .uic/
 /build*/
+/dist/
 *.sqlite*
 
 # Compilation database (generated under build/; optional root symlink)

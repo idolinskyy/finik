@@ -41,6 +41,7 @@ add_executable(fin_tests
   test_ui_documents.cpp
   test_ui_reports.cpp
   test_settings.cpp
+  test_packaging.cpp
   ../help/help.qrc
 )
 

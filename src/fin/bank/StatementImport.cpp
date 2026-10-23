@@ -90,6 +90,57 @@ QStringList splitCsvLine(const QString & line, QChar delimiter)
   return cells;
 }
 
+QString extractContractNumber(const QString & text)
+{
+  const QString source = text.trimmed();
+  if (source.isEmpty()) {
+    return {};
+  }
+  static const QRegularExpression re(
+      QStringLiteral(
+          R"((?:дог(?:овір|овором|овору)|contract)\s*(?:№|n[oо]\.?)?\s*([^\s,;]+))"),
+      QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
+  const QRegularExpressionMatch match = re.match(source);
+  if (!match.hasMatch()) {
+    return {};
+  }
+  QString number = match.captured(1).trimmed();
+  while (number.endsWith(QLatin1Char('.')) || number.endsWith(QLatin1Char(')'))) {
+    number.chop(1);
+  }
+  return number;
+}
+
+void applyContractNumber(StatementRow & item)
+{
+  if (item.contractNumber.trimmed().isEmpty()) {
+    item.contractNumber = extractContractNumber(item.purpose);
+  } else {
+    item.contractNumber = item.contractNumber.trimmed();
+  }
+}
+
+ContractId matchContract(LedgerSession & session, CounterpartyId counterpartyId,
+                         const QString & number)
+{
+  if (!counterpartyId || number.trimmed().isEmpty()) {
+    return {};
+  }
+  const Result<std::vector<Contract>> list = session.contracts().listByCounterparty(counterpartyId);
+  if (!list) {
+    return {};
+  }
+  ContractId found;
+  int hits = 0;
+  for (const Contract & contract : list.value()) {
+    if (contract.number.compare(number.trimmed(), Qt::CaseInsensitive) == 0) {
+      found = contract.id;
+      ++hits;
+    }
+  }
+  return hits == 1 ? found : ContractId{};
+}
+
 int columnIndex(const QStringList & header, const QStringList & aliases)
 {
   for (int i = 0; i < header.size(); ++i) {
@@ -135,6 +186,7 @@ Result<StatementParse> parseCsv(const QString & text)
   int purposeCol = 3;
   int edrpouCol = 4;
   int nameCol = 5;
+  int contractCol = 6;
   int start = 0;
   if (hasHeader) {
     dateCol = columnIndex(
@@ -149,6 +201,8 @@ Result<StatementParse> parseCsv(const QString & text)
                                      QStringLiteral("okpo"), QStringLiteral("cntr_crf")});
     nameCol = columnIndex(
         header, {QStringLiteral("name"), QStringLiteral("контрагент"), QStringLiteral("party")});
+    contractCol = columnIndex(header, {QStringLiteral("contract"), QStringLiteral("договір"),
+                                       QStringLiteral("dogovor"), QStringLiteral("dogovir")});
     start = 1;
     if (dateCol < 0 || amountCol < 0) {
       return Result<StatementParse>::fail(
@@ -169,6 +223,8 @@ Result<StatementParse> parseCsv(const QString & text)
     item.purpose = cell(row, purposeCol);
     item.edrpou = cell(row, edrpouCol).trimmed();
     item.partyName = cell(row, nameCol).trimmed();
+    item.contractNumber = cell(row, contractCol).trimmed();
+    applyContractNumber(item);
     if (!item.date.isValid()) {
       item.error = QStringLiteral("некоректна дата");
     } else if (!amount) {
@@ -225,6 +281,7 @@ Result<StatementParse> parseXml(const QString & text)
     } else if (!current.amount.isPositive()) {
       current.error = QStringLiteral("сума має бути більшою за нуль");
     }
+    applyContractNumber(current);
     parsed.rows.push_back(current);
     current = StatementRow{};
     inRow = false;
@@ -262,6 +319,7 @@ Result<StatementParse> parseXml(const QString & text)
       current.purpose = xml.attributes().value(QStringLiteral("purpose")).toString();
       current.edrpou = xml.attributes().value(QStringLiteral("edrpou")).toString();
       current.partyName = xml.attributes().value(QStringLiteral("name")).toString();
+      current.contractNumber = xml.attributes().value(QStringLiteral("contract")).toString();
       continue;
     }
     if (!inRow) {
@@ -291,6 +349,8 @@ Result<StatementParse> parseXml(const QString & text)
       current.edrpou = value;
     } else if (name == QStringLiteral("name") || name == QStringLiteral("aut_cntr_nam")) {
       current.partyName = value;
+    } else if (name == QStringLiteral("contract") || name == QStringLiteral("dogovor")) {
+      current.contractNumber = value;
     }
   }
   flush();
@@ -370,6 +430,7 @@ Result<int> importBankStatement(LedgerSession & session, StatementParse & parsed
     document.type = DocumentType::BankPayment;
     document.date = row.date;
     document.counterpartyId = party.value().id;
+    document.contractId = row.contractId;
     document.comment = row.purpose;
     document.lines = composed.value();
     const Result<QString> number = session.documents().allocateNumber(DocumentType::BankPayment);
@@ -433,6 +494,10 @@ void classifyBankStatement(LedgerSession & session, StatementParse & parsed)
     const Result<Counterparty> party = session.counterparties().findByEdrpou(row.edrpou);
     if (!party && party.error().code != ErrorCode::NotFound) {
       row.error = party.message();
+      continue;
+    }
+    if (party) {
+      row.contractId = matchContract(session, party.value().id, row.contractNumber);
     }
   }
 }

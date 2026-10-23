@@ -2,6 +2,7 @@
 
 #include "fin/bank/PaymentExport.h"
 #include "fin/bank/StatementImport.h"
+#include "fin/domain/Contract.h"
 #include "fin/domain/DocumentBlueprint.h"
 
 using namespace fin;
@@ -79,6 +80,107 @@ TEST_CASE("bank statement xml imports outgoing payment")
   REQUIRE(accounts);
   REQUIRE_FALSE(bankDocumentIncoming(document.value().lines, accounts.value()));
   REQUIRE(document.value().lines.front().amount.cents() == 8050);
+}
+
+TEST_CASE("bank statement imports contract from column and purpose")
+{
+  LedgerSession session = openSession();
+  Counterparty mill;
+  mill.name = QStringLiteral("ТОВ Млин-договір");
+  mill.edrpou = QStringLiteral("11223355");
+  mill.isCustomer = true;
+  mill.isSupplier = true;
+  const Result<CounterpartyId> millId = session.counterparties().insert(mill);
+  REQUIRE(millId);
+
+  Contract contract;
+  contract.counterpartyId = millId.value();
+  contract.number = QStringLiteral("12-П/2026");
+  contract.name = QStringLiteral("Поставка");
+  contract.date = QDate(2026, 1, 1);
+  const Result<ContractId> cid = session.contracts().insert(contract);
+  REQUIRE(cid);
+
+  const QString csv =
+      QStringLiteral("date;amount;direction;purpose;edrpou;name;contract\n"
+                     "2026-09-10;1500,00;in;оплата;11223355;ТОВ Млин-договір;12-П/2026\n");
+  Result<StatementParse> parsed = parseBankStatement(csv, QStringLiteral("stmt.csv"));
+  REQUIRE(parsed);
+  REQUIRE(parsed.value().rows.front().contractNumber == QStringLiteral("12-П/2026"));
+  const Result<int> created = importBankStatement(session, parsed.value());
+  REQUIRE(created);
+  REQUIRE(created.value() == 1);
+  REQUIRE(parsed.value().rows.front().contractId == cid.value());
+
+  const Result<std::vector<DocumentHeader>> list =
+      session.documents().list(QDate(2026, 9, 10), QDate(2026, 9, 10), DocumentType::BankPayment);
+  REQUIRE(list);
+  REQUIRE(list.value().size() == 1);
+  const Result<Document> document = session.documents().findById(list.value().front().id);
+  REQUIRE(document);
+  REQUIRE(document.value().contractId == cid.value());
+}
+
+TEST_CASE("bank statement picks contract number from payment purpose")
+{
+  LedgerSession session = openSession();
+  Counterparty mill;
+  mill.name = QStringLiteral("ТОВ Призначення");
+  mill.edrpou = QStringLiteral("55667788");
+  mill.isCustomer = true;
+  const Result<CounterpartyId> millId = session.counterparties().insert(mill);
+  REQUIRE(millId);
+
+  Contract contract;
+  contract.counterpartyId = millId.value();
+  contract.number = QStringLiteral("12-П/2026");
+  contract.name = QStringLiteral("Поставка");
+  contract.date = QDate(2026, 2, 1);
+  const Result<ContractId> cid = session.contracts().insert(contract);
+  REQUIRE(cid);
+
+  const QString xml = QStringLiteral(
+      "<statement><row date=\"2026-09-18\" amount=\"90.00\" incoming=\"1\" "
+      "purpose=\"оплата за договором № 12-П/2026 від 01.02.2026\" "
+      "edrpou=\"55667788\" name=\"ТОВ Призначення\"/></statement>");
+  Result<StatementParse> parsed = parseBankStatement(xml, QStringLiteral("stmt.xml"));
+  REQUIRE(parsed);
+  REQUIRE(parsed.value().rows.front().contractNumber == QStringLiteral("12-П/2026"));
+  const Result<int> created = importBankStatement(session, parsed.value());
+  REQUIRE(created);
+  REQUIRE(created.value() == 1);
+  const Result<std::vector<DocumentHeader>> list =
+      session.documents().list(QDate(2026, 9, 18), QDate(2026, 9, 18), DocumentType::BankPayment);
+  REQUIRE(list);
+  const Result<Document> document = session.documents().findById(list.value().front().id);
+  REQUIRE(document);
+  REQUIRE(document.value().contractId == cid.value());
+}
+
+TEST_CASE("bank statement leaves contract empty when number is unknown")
+{
+  LedgerSession session = openSession();
+  Counterparty mill;
+  mill.name = QStringLiteral("ТОВ Без договору");
+  mill.edrpou = QStringLiteral("99887766");
+  mill.isCustomer = true;
+  REQUIRE(session.counterparties().insert(mill));
+
+  const QString csv =
+      QStringLiteral("date;amount;direction;purpose;edrpou;name;contract\n"
+                     "2026-09-19;10,00;in;оплата;99887766;ТОВ Без договору;НЕМАЄ-1\n");
+  Result<StatementParse> parsed = parseBankStatement(csv, QStringLiteral("stmt.csv"));
+  REQUIRE(parsed);
+  const Result<int> created = importBankStatement(session, parsed.value());
+  REQUIRE(created);
+  REQUIRE(created.value() == 1);
+  REQUIRE_FALSE(parsed.value().rows.front().contractId);
+  const Result<std::vector<DocumentHeader>> list =
+      session.documents().list(QDate(2026, 9, 19), QDate(2026, 9, 19), DocumentType::BankPayment);
+  REQUIRE(list);
+  const Result<Document> document = session.documents().findById(list.value().front().id);
+  REQUIRE(document);
+  REQUIRE_FALSE(document.value().contractId);
 }
 
 TEST_CASE("outgoing bank payments export to client-bank csv")

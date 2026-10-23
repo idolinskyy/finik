@@ -12,9 +12,12 @@
 #include "fin/domain/IntangibleAsset.h"
 
 #include <algorithm>
+#include <array>
 #include <QHash>
 #include <QLatin1String>
 #include <QList>
+#include <QSet>
+#include <QStringList>
 
 namespace fin {
 namespace {
@@ -1543,6 +1546,263 @@ Result<VatStatement> VatStatementReport::build(QDate from, QDate to) const
   return Result<VatStatement>::ok(std::move(report));
 }
 
+namespace {
+
+QString subcontoNodeKey(const std::array<std::int64_t, 3> & ids, int level)
+{
+  QString key = QString::number(ids[0]);
+  for (int i = 1; i <= level; ++i) {
+    key += QLatin1Char('|');
+    key += QString::number(ids[i]);
+  }
+  return key;
+}
+
+Status fillSubcontoMoney(const Agg & agg, SubcontoTrialBalanceRow & row)
+{
+  Status split = splitSigned(agg.openDt - agg.openCt, row.openingDebit, row.openingCredit);
+  if (!split) {
+    return split;
+  }
+  row.turnoverDebit = Money::fromCents(agg.turnDt);
+  row.turnoverCredit = Money::fromCents(agg.turnCt);
+  const std::int64_t closeNet = (agg.openDt - agg.openCt) + agg.turnDt - agg.turnCt;
+  return splitSigned(closeNet, row.closingDebit, row.closingCredit);
+}
+
+Result<SubcontoTrialBalance> buildHierarchicalSubconto(QSqlDatabase db, AccountId accountId,
+                                                       QDate from, QDate to)
+{
+  AccountRepository accounts(db);
+  Result<Account> account = accounts.findById(accountId);
+  if (!account) {
+    return Result<SubcontoTrialBalance>::fail(account.error());
+  }
+
+  SubcontoRepository subcontoRepo(db);
+  const auto listRes = subcontoRepo.listForAccount(accountId);
+  if (!listRes) {
+    return Result<SubcontoTrialBalance>::fail(listRes.error());
+  }
+  std::vector<AccountSubconto> settings = listRes.value();
+  std::sort(settings.begin(), settings.end(),
+            [](const AccountSubconto & a, const AccountSubconto & b) { return a.lineNo < b.lineNo; });
+  if (settings.empty()) {
+    return Result<SubcontoTrialBalance>::fail(
+        Error::notFound(QStringLiteral("для рахунку %1 не налаштовано субконто")
+                            .arg(account.value().code)));
+  }
+  const int dimCount = static_cast<int>(settings.size());
+
+  sql::Query query(db);
+  Status status = query.prepare(QStringLiteral(
+      "SELECT debit_account_id, credit_account_id, amount_cents, date, "
+      "dt_subconto1_id, dt_subconto2_id, dt_subconto3_id, "
+      "ct_subconto1_id, ct_subconto2_id, ct_subconto3_id "
+      "FROM ledger_entries "
+      "WHERE debit_account_id = :id OR credit_account_id = :id2"));
+  if (!status) {
+    return Result<SubcontoTrialBalance>::fail(status.error());
+  }
+  const qlonglong id = static_cast<qlonglong>(accountId.value);
+  query.bind(QStringLiteral(":id"), id);
+  query.bind(QStringLiteral(":id2"), id);
+  status = query.exec();
+  if (!status) {
+    return Result<SubcontoTrialBalance>::fail(status.error());
+  }
+
+  const QString fromIso = from.toString(Qt::ISODate);
+  const QString toIso = to.toString(Qt::ISODate);
+  QHash<QString, Agg> byKey;
+
+  auto addSide = [&](const std::array<std::int64_t, 3> & ids, bool debit, const QString & date,
+                     std::int64_t amount) -> Status {
+    for (int level = 0; level < dimCount; ++level) {
+      Agg & agg = byKey[subcontoNodeKey(ids, level)];
+      if (date < fromIso) {
+        Status st = debit ? addTo(agg.openDt, amount, QStringLiteral("ОСВ субконто"))
+                          : addTo(agg.openCt, amount, QStringLiteral("ОСВ субконто"));
+        if (!st) {
+          return st;
+        }
+      } else if (date <= toIso) {
+        Status st = debit ? addTo(agg.turnDt, amount, QStringLiteral("ОСВ субконто"))
+                          : addTo(agg.turnCt, amount, QStringLiteral("ОСВ субконто"));
+        if (!st) {
+          return st;
+        }
+      }
+    }
+    return Status::ok();
+  };
+
+  while (query.next()) {
+    const std::int64_t debitId = query.value(0).toLongLong();
+    const std::int64_t creditId = query.value(1).toLongLong();
+    const std::int64_t amount = query.value(2).toLongLong();
+    const QString date = query.value(3).toString();
+    if (debitId == accountId.value) {
+      const std::array<std::int64_t, 3> ids{query.value(4).toLongLong(), query.value(5).toLongLong(),
+                                            query.value(6).toLongLong()};
+      Status st = addSide(ids, true, date, amount);
+      if (!st) {
+        return Result<SubcontoTrialBalance>::fail(st.error());
+      }
+    }
+    if (creditId == accountId.value) {
+      const std::array<std::int64_t, 3> ids{query.value(7).toLongLong(), query.value(8).toLongLong(),
+                                            query.value(9).toLongLong()};
+      Status st = addSide(ids, false, date, amount);
+      if (!st) {
+        return Result<SubcontoTrialBalance>::fail(st.error());
+      }
+    }
+  }
+
+  auto resolveLabel = [&](int level, std::int64_t entityId) -> QString {
+    if (entityId <= 0) {
+      return QStringLiteral("(без аналітики)");
+    }
+    const QString kindId = settings[static_cast<size_t>(level)].subcontoKindId;
+    const auto nameRes = subcontoRepo.resolveName(kindId, entityId);
+    return nameRes ? nameRes.value() : QString::number(entityId);
+  };
+
+  auto compareIds = [&](int level, std::int64_t a, std::int64_t b) {
+    const QString na = resolveLabel(level, a);
+    const QString nb = resolveLabel(level, b);
+    const int cmp = QString::localeAwareCompare(na, nb);
+    if (cmp != 0) {
+      return cmp < 0;
+    }
+    return a < b;
+  };
+
+  QSet<std::int64_t> level0;
+  QHash<std::int64_t, QSet<std::int64_t>> level1;
+  QHash<QString, QSet<std::int64_t>> level2;
+  for (auto it = byKey.cbegin(); it != byKey.cend(); ++it) {
+    const QStringList parts = it.key().split(QLatin1Char('|'));
+    if (parts.isEmpty()) {
+      continue;
+    }
+    const std::int64_t id0 = parts.at(0).toLongLong();
+    level0.insert(id0);
+    if (parts.size() >= 2) {
+      const std::int64_t id1 = parts.at(1).toLongLong();
+      level1[id0].insert(id1);
+      if (parts.size() >= 3) {
+        level2[subcontoNodeKey({id0, id1, 0}, 1)].insert(parts.at(2).toLongLong());
+      }
+    }
+  }
+
+  SubcontoTrialBalance report;
+  report.accountId = accountId;
+  report.accountCode = account.value().code;
+  report.accountName = account.value().name;
+  report.hierarchical = true;
+  report.from = from;
+  report.to = to;
+  QStringList kindNames;
+  for (const AccountSubconto & s : settings) {
+    const auto kindRes = subcontoRepo.findKind(s.subcontoKindId);
+    kindNames.append(kindRes ? kindRes.value().nameUa : s.subcontoKindId);
+  }
+  report.subcontoKindId = QStringLiteral("*");
+  report.subcontoKindName = kindNames.join(QStringLiteral(" / "));
+
+  auto emitRow = [&](int level, const std::array<std::int64_t, 3> & ids) -> Status {
+    const QString key = subcontoNodeKey(ids, level);
+    SubcontoTrialBalanceRow row;
+    row.level = level;
+    row.subconto.kindId = settings[static_cast<size_t>(level)].subcontoKindId;
+    row.subconto.entityId = ids[static_cast<size_t>(level)];
+    row.subconto.name = resolveLabel(level, row.subconto.entityId);
+    Status filled = fillSubcontoMoney(byKey.value(key), row);
+    if (!filled) {
+      return filled;
+    }
+    report.rows.push_back(row);
+    return Status::ok();
+  };
+
+  QList<std::int64_t> roots = level0.values();
+  std::sort(roots.begin(), roots.end(),
+            [&](std::int64_t a, std::int64_t b) { return compareIds(0, a, b); });
+
+  std::int64_t totOpenDt = 0;
+  std::int64_t totOpenCt = 0;
+  std::int64_t totTurnDt = 0;
+  std::int64_t totTurnCt = 0;
+  std::int64_t totCloseDt = 0;
+  std::int64_t totCloseCt = 0;
+
+  for (std::int64_t id0 : roots) {
+    Status st = emitRow(0, {id0, 0, 0});
+    if (!st) {
+      return Result<SubcontoTrialBalance>::fail(st.error());
+    }
+    const SubcontoTrialBalanceRow & parent = report.rows.back();
+    Status add = addTo(totOpenDt, parent.openingDebit.cents(), QStringLiteral("ОСВ субконто"));
+    if (!add)
+      return Result<SubcontoTrialBalance>::fail(add.error());
+    add = addTo(totOpenCt, parent.openingCredit.cents(), QStringLiteral("ОСВ субконто"));
+    if (!add)
+      return Result<SubcontoTrialBalance>::fail(add.error());
+    add = addTo(totTurnDt, parent.turnoverDebit.cents(), QStringLiteral("ОСВ субконто"));
+    if (!add)
+      return Result<SubcontoTrialBalance>::fail(add.error());
+    add = addTo(totTurnCt, parent.turnoverCredit.cents(), QStringLiteral("ОСВ субконто"));
+    if (!add)
+      return Result<SubcontoTrialBalance>::fail(add.error());
+    add = addTo(totCloseDt, parent.closingDebit.cents(), QStringLiteral("ОСВ субконто"));
+    if (!add)
+      return Result<SubcontoTrialBalance>::fail(add.error());
+    add = addTo(totCloseCt, parent.closingCredit.cents(), QStringLiteral("ОСВ субконто"));
+    if (!add)
+      return Result<SubcontoTrialBalance>::fail(add.error());
+
+    if (dimCount < 2) {
+      continue;
+    }
+    QList<std::int64_t> children = level1.value(id0).values();
+    std::sort(children.begin(), children.end(),
+              [&](std::int64_t a, std::int64_t b) { return compareIds(1, a, b); });
+    for (std::int64_t id1 : children) {
+      st = emitRow(1, {id0, id1, 0});
+      if (!st) {
+        return Result<SubcontoTrialBalance>::fail(st.error());
+      }
+      if (dimCount < 3) {
+        continue;
+      }
+      const QString parentKey = subcontoNodeKey({id0, id1, 0}, 1);
+      QList<std::int64_t> grand = level2.value(parentKey).values();
+      std::sort(grand.begin(), grand.end(),
+                [&](std::int64_t a, std::int64_t b) { return compareIds(2, a, b); });
+      for (std::int64_t id2 : grand) {
+        st = emitRow(2, {id0, id1, id2});
+        if (!st) {
+          return Result<SubcontoTrialBalance>::fail(st.error());
+        }
+      }
+    }
+  }
+
+  report.totals.subconto.name = QStringLiteral("Разом");
+  report.totals.openingDebit = Money::fromCents(totOpenDt);
+  report.totals.openingCredit = Money::fromCents(totOpenCt);
+  report.totals.turnoverDebit = Money::fromCents(totTurnDt);
+  report.totals.turnoverCredit = Money::fromCents(totTurnCt);
+  report.totals.closingDebit = Money::fromCents(totCloseDt);
+  report.totals.closingCredit = Money::fromCents(totCloseCt);
+  return Result<SubcontoTrialBalance>::ok(std::move(report));
+}
+
+} // namespace
+
 SubcontoTrialBalanceReport::SubcontoTrialBalanceReport(QSqlDatabase db) : db_(std::move(db)) {}
 
 Result<SubcontoTrialBalance> SubcontoTrialBalanceReport::build(AccountId accountId, int lineNo,
@@ -1552,9 +1812,12 @@ Result<SubcontoTrialBalance> SubcontoTrialBalanceReport::build(AccountId account
     return Result<SubcontoTrialBalance>::fail(
         Error::invalidArgument(QStringLiteral("некоректний період")));
   }
-  if (lineNo < 1 || lineNo > 3) {
+  if (lineNo < 0 || lineNo > 3) {
     return Result<SubcontoTrialBalance>::fail(
-        Error::invalidArgument(QStringLiteral("номер розрізу субконто має бути від 1 до 3")));
+        Error::invalidArgument(QStringLiteral("номер розрізу субконто має бути від 0 до 3")));
+  }
+  if (lineNo == 0) {
+    return buildHierarchicalSubconto(db_, accountId, from, to);
   }
 
   AccountRepository accounts(db_);

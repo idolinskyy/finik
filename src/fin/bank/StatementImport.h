@@ -22,6 +22,8 @@ struct StatementRow
   QString purpose;      // призначення платежу з виписки
   QString edrpou; // ЄДРПОУ/ІПН контрагента (для автозіставлення)
   QString partyName; // найменування контрагента
+  QString contractNumber; // номер договору з колонки/тега або з призначення платежу
+  ContractId contractId;  // зіставлений договір довідника (порожній, якщо не знайдено)
   QString error; // опис помилки парсингу; порожній = рядок коректний
   bool duplicate = false; // рядок вже є в журналі
 };

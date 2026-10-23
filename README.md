@@ -55,6 +55,18 @@ make -j$(nproc)
 
 Локальні перевірки (формат): `./scripts/check.sh` — див. [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Пакування
+
+Щоб поставити Фінік без збірки з сирців (Linux):
+
+```bash
+./scripts/package.sh
+```
+
+У `dist/` з’являться `.deb` і `.tar.gz` (CPack). AppImage — лише якщо в `PATH` є `linuxdeploy`. CI / GitHub Actions для цього **не** запускаємо (на холді); реліз на GitHub — вручну: тег `v0.1.x` і вкладені файли з `dist/`.
+
+Пакет ставить бінарник `Finik`, ярлик `.desktop` і іконки hicolor. База лишається в `~/.local/share/Finik/Finik/` — встановлення пакета її не чіпає.
+
 ## Дані
 
 SQLite (WAL). Qt кладе дані в `organizationName/applicationName` (обидва
@@ -68,7 +80,10 @@ SQLite (WAL). Qt кладе дані в `organizationName/applicationName` (об
 
 ## Документація
 
+- [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — гайд для розробника без бухгалтерії: дебет/кредит, рахунки, карта C++ файлів.
 - [PROJECT_DOCS.md](PROJECT_DOCS.md) — підсистеми, схема БД (v27), проведення.
+- [docs/ROADMAP_1C.md](docs/ROADMAP_1C.md) — що є / частково / план.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — стандарти коду. Вбудована довідка бухгалтера — F1 (`help/*.html`).
 
 ## Статус і відповідальність
 

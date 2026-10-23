@@ -75,9 +75,11 @@ Clang / GCC    ── компілятор (-Wall -Wextra -Wpedantic)
 
 ```
 .
-├── CMakeLists.txt          # головний білд-скрипт (3 targets: fin_core, Finik, fin_tests)
+├── CMakeLists.txt          # головний білд-скрипт (3 targets: fin_core, Finik, fin_tests) + CPack .deb/.tar.gz
 ├── CONTRIBUTING.md               # правила проекту (обов'язкові стандарти)
+├── scripts/package.sh      # локальне пакування (.deb, .tar.gz, опційно AppImage)
 ├── docs/
+│   ├── DEVELOPER_GUIDE.md  # гайд для розробника без бухгалтерії
 │   └── ROADMAP_1C.md       # дорожня карта розвитку
 ├── help/                   # вбудована довідка (HTML + QRC)
 ├── src/
@@ -340,7 +342,7 @@ PRAGMA busy_timeout = 5000;     -- тайм-аут блокування 5 сек
 | `TrialBalanceReport`         | `build(from, to)`                           | **ОСВ** — Оборотно-сальдова відомість                                     |
 | `AccountCardReport`          | `build(accountId, from, to, counterparty?)` | **Картка рахунку** з наростаючим сальдо                                   |
 | `AccountCardReport`          | `buildWithSubconto(...)`                    | Картка рахунку за субконто (контрагент, працівник)                        |
-| `SubcontoTrialBalanceReport` | `build(accountId, lineNo, from, to)`        | **ОСВ по субконто** (UI: Звіти → «ОСВ по субконто», ПКМ з ОСВ)            |
+| `SubcontoTrialBalanceReport` | `build(accountId, lineNo, from, to)`        | **ОСВ по субконто** (`lineNo` 1..3 — один вимір; `0` — усі виміри деревоподібно) |
 | `AccountAnalysisReport`      | `build(accountId, from, to)`                | **Аналіз рахунку** (в розрізі кореспондуючих рахунків)                    |
 | `CounterpartyTurnoverReport` | `build(accountId, from, to)`                | **Обороти по контрагентах**                                               |
 | `StockReport`                | `build(from, to, warehouseId?)`             | **Складська відомість** (залишки та обороти)                              |
@@ -464,6 +466,7 @@ PRAGMA busy_timeout = 5000;     -- тайм-аут блокування 5 сек
   - Парсинг JSON-відповідей (`StatementParse`).
   - Шифроване зберігання `monobank_token` у картці підприємства (міграція `v22`).
 - Автоматичне зіставлення платежів за **ЄДРПОУ** контрагента
+- Договір: колонка/тег CSV/XML або номер із призначення (`договір № …`); підставляється в шапку чернетки, якщо є в довіднику цього контрагента
 - Визначення напрямку платежу (надходження/видатки)
 - Створення **непроведених чернеток** `BankPayment`
 - Захист від **дублікатів** (перевірка за датою, сумою та призначенням)
@@ -767,7 +770,8 @@ cmake --build build --target Finik   # вбудувати нові PNG у qrc
 
 ## 23. Дорожня карта (Roadmap)
 
-Деталі: [`docs/ROADMAP_1C.md`](docs/ROADMAP_1C.md)
+Гайд для розробника без обліку: [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md).
+Деталі статусів етапу 1: [`docs/ROADMAP_1C.md`](docs/ROADMAP_1C.md).
 
 ### Реалізований функціонал
 

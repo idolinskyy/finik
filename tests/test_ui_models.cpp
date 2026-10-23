@@ -187,6 +187,32 @@ TEST_CASE("SubcontoTrialBalanceModel renders analytics rows and totals", "[ui][m
   REQUIRE(model.data(model.index(1, 0), Qt::FontRole).value<QFont>().bold());
 }
 
+TEST_CASE("SubcontoTrialBalanceModel indents hierarchical rows", "[ui][models]")
+{
+  SubcontoTrialBalanceModel model;
+  SubcontoTrialBalance report;
+  report.hierarchical = true;
+  report.subcontoKindName = QStringLiteral("Контрагенти / Договори");
+
+  SubcontoTrialBalanceRow parent;
+  parent.level = 0;
+  parent.subconto.name = QStringLiteral("ТОВ Альфа");
+  parent.closingDebit = Money::fromCents(15000);
+  report.rows.push_back(parent);
+
+  SubcontoTrialBalanceRow child;
+  child.level = 1;
+  child.subconto.name = QStringLiteral("Договір A-1");
+  child.closingDebit = Money::fromCents(10000);
+  report.rows.push_back(child);
+  report.totals.closingDebit = Money::fromCents(15000);
+
+  model.setReport(report);
+  REQUIRE(model.data(model.index(0, 0)).toString() == QStringLiteral("ТОВ Альфа"));
+  REQUIRE(model.data(model.index(0, 0), Qt::FontRole).value<QFont>().bold());
+  REQUIRE(model.data(model.index(1, 0)).toString() == QStringLiteral("    Договір A-1"));
+}
+
 TEST_CASE("AccountAnalysisModel displays correspondences and turnover totals", "[ui][models]")
 {
   AccountAnalysisModel model;

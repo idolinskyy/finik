@@ -52,10 +52,17 @@ QVariant SubcontoTrialBalanceModel::data(const QModelIndex & index, int role) co
     case 0:
       if (isTotalsRow(index.row()))
         return QStringLiteral("Разом");
-      return row.subconto.name.isEmpty()
-                 ? (row.subconto.entityId > 0 ? QString::number(row.subconto.entityId)
-                                              : QStringLiteral("(без аналітики)"))
-                 : row.subconto.name;
+      {
+        const QString name =
+            row.subconto.name.isEmpty()
+                ? (row.subconto.entityId > 0 ? QString::number(row.subconto.entityId)
+                                             : QStringLiteral("(без аналітики)"))
+                : row.subconto.name;
+        if (report_.hierarchical && row.level > 0) {
+          return QString(row.level * 4, QLatin1Char(' ')) + name;
+        }
+        return name;
+      }
     case 1:
       return row.openingDebit.isZero() ? QString() : row.openingDebit.toDisplay();
     case 2:
@@ -75,7 +82,8 @@ QVariant SubcontoTrialBalanceModel::data(const QModelIndex & index, int role) co
     return static_cast<int>(Qt::AlignRight | Qt::AlignVCenter);
   }
 
-  if (role == Qt::FontRole && isTotalsRow(index.row())) {
+  if (role == Qt::FontRole &&
+      (isTotalsRow(index.row()) || (report_.hierarchical && row.level == 0))) {
     return boldFont_;
   }
 

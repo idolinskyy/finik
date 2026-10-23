@@ -301,3 +301,80 @@ TEST_CASE("Subconto: PostingEngine fills subconto and reports analyze by subcont
   CHECK(card.rows[0].credit == Money::fromCents(1000000));
   CHECK(card.rows[0].creditSubconto.s1.name == QStringLiteral("ТОВ Постачальник 1"));
 }
+
+TEST_CASE("Subconto trial balance expands all dimensions as a tree", "[subconto]")
+{
+  LedgerSession session = openSession();
+  const AccountId acc361 = account(session, chart::kCustomers);
+  const AccountId zero = account(session, chart::kAuxiliary);
+
+  const CounterpartyId alpha = customer(session, QStringLiteral("ТОВ Альфа-ОСВ"));
+  const CounterpartyId beta = customer(session, QStringLiteral("ТОВ Бета-ОСВ"));
+  Contract c1;
+  c1.counterpartyId = alpha;
+  c1.number = QStringLiteral("A-1");
+  c1.name = QStringLiteral("Договір Альфа 1");
+  c1.date = QDate(2026, 1, 1);
+  const Result<ContractId> idA1 = session.contracts().insert(c1);
+  REQUIRE(idA1);
+  Contract c2;
+  c2.counterpartyId = alpha;
+  c2.number = QStringLiteral("A-2");
+  c2.name = QStringLiteral("Договір Альфа 2");
+  c2.date = QDate(2026, 1, 2);
+  const Result<ContractId> idA2 = session.contracts().insert(c2);
+  REQUIRE(idA2);
+  Contract c3;
+  c3.counterpartyId = beta;
+  c3.number = QStringLiteral("B-1");
+  c3.name = QStringLiteral("Договір Бета");
+  c3.date = QDate(2026, 1, 3);
+  const Result<ContractId> idB1 = session.contracts().insert(c3);
+  REQUIRE(idB1);
+
+  Document doc = makeDoc(DocumentType::OpeningBalance, QDate(2026, 1, 1), QStringLiteral("ЗС-tree"));
+  DocumentLine l1 = line(acc361, zero, 10000);
+  l1.counterpartyId = alpha;
+  l1.contractId = idA1.value();
+  doc.lines.push_back(l1);
+  DocumentLine l2 = line(acc361, zero, 5000);
+  l2.counterpartyId = alpha;
+  l2.contractId = idA2.value();
+  doc.lines.push_back(l2);
+  DocumentLine l3 = line(acc361, zero, 3000);
+  l3.counterpartyId = beta;
+  l3.contractId = idB1.value();
+  doc.lines.push_back(l3);
+  saveAndPost(session, doc);
+
+  const auto tree =
+      session.subcontoTrialBalance().build(acc361, 0, QDate(2026, 1, 1), QDate(2026, 1, 31));
+  REQUIRE(tree);
+  REQUIRE(tree.value().hierarchical);
+  REQUIRE(tree.value().rows.size() == 5);
+
+  int parents = 0;
+  int children = 0;
+  Money parentSum = Money::zero();
+  for (const SubcontoTrialBalanceRow & row : tree.value().rows) {
+    if (row.level == 0) {
+      ++parents;
+      const Result<Money> added = parentSum.plus(row.closingDebit);
+      REQUIRE(added);
+      parentSum = added.value();
+    } else if (row.level == 1) {
+      ++children;
+    }
+  }
+  REQUIRE(parents == 2);
+  REQUIRE(children == 3);
+  REQUIRE(parentSum == Money::fromCents(18000));
+  REQUIRE(tree.value().totals.closingDebit == Money::fromCents(18000));
+
+  const auto flat =
+      session.subcontoTrialBalance().build(acc361, 1, QDate(2026, 1, 1), QDate(2026, 1, 31));
+  REQUIRE(flat);
+  REQUIRE_FALSE(flat.value().hierarchical);
+  REQUIRE(flat.value().rows.size() == 2);
+  REQUIRE(flat.value().totals.closingDebit == Money::fromCents(18000));
+}

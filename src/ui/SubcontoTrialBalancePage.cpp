@@ -29,6 +29,7 @@ SubcontoTrialBalancePage::SubcontoTrialBalancePage(LedgerSession & session, QWid
 
   toolbar->addWidget(new QLabel(QStringLiteral("Субконто:")));
   lineCb_ = new QComboBox;
+  lineCb_->setObjectName(QStringLiteral("subcontoLineCombo"));
   toolbar->addWidget(lineCb_);
 
   kindHint_ = new QLabel;
@@ -125,6 +126,11 @@ void SubcontoTrialBalancePage::reloadLineNos()
   const AccountId accountId{static_cast<std::int64_t>(accountCb_->currentData().toULongLong())};
   const auto settings = session_.subconto().listForAccount(accountId);
   if (settings) {
+    if (settings.value().size() > 1) {
+      lineCb_->addItem(QStringLiteral("Усі виміри"), 0);
+      lineCb_->setItemData(lineCb_->count() - 1, QStringLiteral("дерево по всіх субконто рахунку"),
+                           Qt::UserRole + 1);
+    }
     for (const AccountSubconto & s : settings.value()) {
       const auto kind = session_.subconto().findKind(s.subcontoKindId);
       const QString label = QStringLiteral("%1 — %2").arg(s.lineNo).arg(kind ? kind.value().nameUa

@@ -120,6 +120,7 @@ class AccountCardReport
 // ОСВ по рахунку в розрізі субконто (SubcontoTrialBalance)
 struct SubcontoTrialBalanceRow
 {
+  int level = 0; // 0 — перший вимір, 1 — другий (для деревоподібної ОСВ)
   SubcontoValue subconto;
   Money openingDebit = Money::zero();
   Money openingCredit = Money::zero();
@@ -138,6 +139,7 @@ struct SubcontoTrialBalance
   QString subcontoKindName;
   QDate from;
   QDate to;
+  bool hierarchical = false; // lineNo == 0: усі виміри рахунку деревоподібно
   std::vector<SubcontoTrialBalanceRow> rows;
   SubcontoTrialBalanceRow totals;
 };
@@ -146,6 +148,7 @@ class SubcontoTrialBalanceReport
 {
  public:
   explicit SubcontoTrialBalanceReport(QSqlDatabase db);
+  // lineNo 1..3 — один вимір; 0 — усі налаштовані виміри (ієрархія).
   Result<SubcontoTrialBalance> build(AccountId accountId, int lineNo, QDate from, QDate to) const;
 
  private:

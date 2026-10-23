@@ -7,6 +7,7 @@
 #include "ui/FinancialStatementPage.h"
 #include "ui/ReconciliationPage.h"
 #include "ui/StockPage.h"
+#include "ui/SubcontoTrialBalancePage.h"
 #include "ui/TrialBalancePage.h"
 
 #include "fin/domain/ChartCodes.h"
@@ -16,6 +17,7 @@
 #include "fin/domain/Warehouse.h"
 #include "fin/session/LedgerSession.h"
 
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDate>
 #include <QSignalSpy>
@@ -225,4 +227,22 @@ TEST_CASE("FinancialStatementPage and StockPage initialize and refresh", "[ui][r
     REQUIRE(table != nullptr);
     REQUIRE(table->rowCount() > 0);
   }
+}
+
+TEST_CASE("SubcontoTrialBalancePage offers all dimensions", "[ui][reports][subconto]")
+{
+  LedgerSession session = openSession();
+  SubcontoTrialBalancePage page(session);
+  page.setAccountAndPeriod(account(session, chart::kCustomers), QDate(2026, 1, 1), QDate(2026, 1, 31),
+                           0);
+  auto * lineCb = page.findChild<QComboBox *>(QStringLiteral("subcontoLineCombo"));
+  REQUIRE(lineCb != nullptr);
+  bool hasAll = false;
+  for (int i = 0; i < lineCb->count(); ++i) {
+    if (lineCb->itemData(i).toInt() == 0 &&
+        lineCb->itemText(i).contains(QStringLiteral("Усі виміри"))) {
+      hasAll = true;
+    }
+  }
+  REQUIRE(hasAll);
 }
