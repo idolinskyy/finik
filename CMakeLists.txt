@@ -274,11 +274,41 @@ set_target_properties(Finik PROPERTIES
 )
 
 include(GNUInstallDirs)
-install(TARGETS Finik
-  BUNDLE DESTINATION .
-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
-)
+
+set(FINIK_BUNDLE_QT OFF)
+if(UNIX AND NOT APPLE AND DEFINED Qt6_DIR)
+  get_filename_component(FINIK_QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
+  if(NOT FINIK_QT_PREFIX MATCHES "^/usr(/|$)")
+    set(FINIK_BUNDLE_QT ON)
+    set(FINIK_BUNDLE_LIBDIR "${CMAKE_INSTALL_LIBDIR}/finik")
+  endif()
+endif()
+
+if(FINIK_BUNDLE_QT)
+  set_target_properties(Finik PROPERTIES INSTALL_RPATH "$ORIGIN")
+  install(TARGETS Finik
+    BUNDLE DESTINATION .
+    LIBRARY DESTINATION ${FINIK_BUNDLE_LIBDIR}
+    RUNTIME DESTINATION ${FINIK_BUNDLE_LIBDIR})
+  configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/packaging/finik-wrapper.sh.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/finik-wrapper.sh"
+    @ONLY
+    NEWLINE_STYLE UNIX)
+  install(PROGRAMS "${CMAKE_CURRENT_BINARY_DIR}/finik-wrapper.sh"
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+    RENAME Finik)
+  install(CODE "
+    set(FINIK_QT_PREFIX \"${FINIK_QT_PREFIX}\")
+    set(FINIK_BUNDLE_LIBDIR \"${FINIK_BUNDLE_LIBDIR}\")
+    include(\"${CMAKE_CURRENT_SOURCE_DIR}/cmake/InstallBundledQt.cmake\")
+  ")
+else()
+  install(TARGETS Finik
+    BUNDLE DESTINATION .
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
     "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
@@ -341,8 +371,15 @@ if(UNIX AND NOT APPLE)
   set(CPACK_GENERATOR "DEB;TGZ")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Ihor Dolinskyi")
   set(CPACK_DEBIAN_PACKAGE_SECTION "office")
-  set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
   set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+  if(FINIK_BUNDLE_QT)
+    # Не тягнути системний libqt6core6 (6.4): у пакеті свій Qt з префікса збірки.
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS
+        "libc6, libstdc++6, libgcc-s1, libgl1, libopengl0, libegl1, libx11-6, libx11-xcb1, libxcb1, libxkbcommon0, libxkbcommon-x11-0, libxcb-cursor0, libxcb-icccm4, libxcb-image0, libxcb-keysyms1, libxcb-randr0, libxcb-render0, libxcb-render-util0, libxcb-shape0, libxcb-shm0, libxcb-sync1, libxcb-xfixes0, libxcb-xkb1, libxcb-util1, libfontconfig1, libfreetype6, libpng16-16 | libpng16-16t64, zlib1g, libglib2.0-0 | libglib2.0-0t64, libxml2, libdbus-1-3, libzstd1, libssl3, libgssapi-krb5-2, libcups2 | libcups2t64")
+  else()
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+  endif()
 endif()
 include(CPack)
 

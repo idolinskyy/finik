@@ -11,8 +11,13 @@ DIST="$ROOT/dist"
 CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr)
 if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
   CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH")
-elif [[ -d "$HOME/Qt/6.10.2/gcc_64" ]]; then
-  CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.2/gcc_64")
+else
+  # Офіційний інсталятор: ~/Qt/6.10.2/gcc_64, ~/Qt/6.12.0/gcc_64, …
+  qt_prefix="$(ls -1d "$HOME"/Qt/[0-9]*/gcc_64 2>/dev/null | sort -V | tail -1 || true)"
+  if [[ -n "$qt_prefix" ]]; then
+    CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$qt_prefix")
+    echo "Qt prefix: $qt_prefix"
+  fi
 fi
 
 cmake -S "$ROOT" -B "$BUILD" "${CMAKE_ARGS[@]}"

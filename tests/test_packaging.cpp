@@ -39,6 +39,12 @@ TEST_CASE("packaging desktop file and package script", "[packaging][help]")
   REQUIRE(script.contains(QStringLiteral("AppDir")));
   REQUIRE(script.contains(QStringLiteral("--target package")));
 
+  const QString wrapper = readSource(QStringLiteral("packaging/finik-wrapper.sh.in"));
+  REQUIRE(wrapper.contains(QStringLiteral("LD_LIBRARY_PATH")));
+  REQUIRE(wrapper.contains(QStringLiteral("QT_PLUGIN_PATH")));
+  REQUIRE(wrapper.contains(QStringLiteral("QT_QPA_PLATFORM_PLUGIN_PATH")));
+  REQUIRE(cmake.contains(QStringLiteral("InstallBundledQt.cmake")));
+
   REQUIRE(QFile::exists(QDir(QString::fromUtf8(FIN_SOURCE_DIR))
                             .filePath(QStringLiteral("packaging/icons/hicolor/256x256/apps/finik.png"))));
 }

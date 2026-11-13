@@ -1025,4 +1025,4 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 - Змінюєте текст для бухгалтера — `help/*.html` + needle в `test_help.cpp` в **одному** рядку.
 - Неясна тема обліку — розділ вище + відповідна сторінка `help/` (вона пишеться для бухгалтера, цей файл — для розробника).
 - Що свідомо **не** робити в v0.1: клієнт ПриватБанку, бюджети, CI (GitHub Actions на холді). Офіційні XSD ДПС у git не класти (копірайт) — користувач кидає файли сам.
-- Пакування для встановлення без сирців: `scripts/package.sh` (`.deb` / `.tar.gz`, за наявності `linuxdeploy` — AppImage). Реліз на GitHub — вручну з `dist/`.
+- Пакування: `scripts/package.sh` (`.deb` / `.tar.gz`, за наявності `linuxdeploy` — AppImage). Якщо Qt не з `/usr` (офіційний інсталятор 6.10) — бібліотеки кладуться в `/usr/lib/finik`, `/usr/bin/Finik` — обгортка з `LD_LIBRARY_PATH`. Реліз на GitHub — вручну з `dist/`.
