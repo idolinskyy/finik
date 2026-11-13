@@ -162,6 +162,11 @@ Status validateAccountSubconto(QSqlDatabase db, AccountId accountId, const Docum
       provided = line.employeeId.isValid() || document.employeeId.isValid();
     } else if (setting.subcontoKindId == subconto_kinds::Contract) {
       provided = line.contractId.isValid() || document.contractId.isValid();
+    } else {
+      const auto kindRes = repo.findKind(setting.subcontoKindId);
+      if (kindRes && isCustomSubcontoSource(kindRes.value().sourceTable)) {
+        provided = line.customSubcontoId(setting.lineNo) > 0;
+      }
     }
     if (!provided) {
       const auto kindRes = repo.findKind(setting.subcontoKindId);

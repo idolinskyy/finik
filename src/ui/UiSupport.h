@@ -107,6 +107,10 @@ void fillEmployeeCombo(QComboBox * combo, LedgerSession & session, EmployeeId se
                        bool optional = false);
 EmployeeId selectedEmployee(const QComboBox * combo);
 
+void fillCustomSubcontoCombo(QComboBox * combo, LedgerSession & session, const QString & kindId,
+                             std::int64_t selected = 0);
+std::int64_t selectedCustomSubconto(const QComboBox * combo);
+
 QPixmap brandLogo(int width);
 QString brandNameUk();
 bool selectTableRowById(QTableWidget * table, qlonglong id);

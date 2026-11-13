@@ -1,6 +1,7 @@
 #include "fin/edo/DeclarationXml.h"
 
 #include "fin/domain/Employee.h"
+#include "fin/edo/XsdValidator.h"
 
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -193,6 +194,31 @@ int calendarDaysInPeriod(const EmployeeTaxRow & emp, QDate from, QDate to)
   return static_cast<int>(start.daysTo(end) + 1);
 }
 
+int calendarDaysEmployed(QDate hiredOn, QDate firedOn, QDate from, QDate to)
+{
+  QDate start = from;
+  QDate end = to;
+  if (hiredOn.isValid() && hiredOn > start) {
+    start = hiredOn;
+  }
+  if (firedOn.isValid() && firedOn < end) {
+    end = firedOn;
+  }
+  if (end < start) {
+    return 0;
+  }
+  return static_cast<int>(start.daysTo(end) + 1);
+}
+
+Status finalizeDeclar(const QString & xml, const QString & xsd)
+{
+  Status check = validateDeclarStructure(xml, xsd);
+  if (!check) {
+    return check;
+  }
+  return validateAgainstXsdIfPresent(xml, xsd);
+}
+
 } // namespace
 
 Result<QString> buildVatDeclarationXml(const VatStatement & report, const CompanyProfile & company)
@@ -229,6 +255,8 @@ Result<QString> buildVatDeclarationXml(const VatStatement & report, const Compan
 
   writer.writeStartElement(QStringLiteral("DECLARBODY"));
   writeCommonBody(writer, company, report.to);
+  writer.writeTextElement(QStringLiteral("HZKV"),
+                          QString::number((report.to.month() - 1) / 3 + 1));
 
   auto vatBaseXml = [rateBp](std::int64_t vatCents) {
     const std::int64_t baseCents = (vatCents * 10000 + rateBp / 2) / rateBp;
@@ -238,27 +266,51 @@ Result<QString> buildVatDeclarationXml(const VatStatement & report, const Compan
     return QString::number(static_cast<double>(vatCents) / 100.0, 'f', 2);
   };
 
-  // Каркас декларації з ПДВ (рядки R011/R101/R18): повне тіло за XSD ДПС — у плані.
-  if (report.liability.closingCredit.isPositive()) {
-    const std::int64_t vat = report.liability.closingCredit.cents();
-    writer.writeTextElement(QStringLiteral("R011G3"), vatBaseXml(vat));
-    writer.writeTextElement(QStringLiteral("R011G4"), vatAmountXml(vat));
+  const std::int64_t liabVat = report.liability.closingCredit.isPositive()
+                                   ? report.liability.closingCredit.cents()
+                                   : 0;
+  const std::int64_t creditVat =
+      report.credit.closingDebit.isPositive() ? report.credit.closingDebit.cents() : 0;
+
+  const QString salesRow = rateBp == 700 ? QStringLiteral("R012") : QStringLiteral("R011");
+  if (liabVat > 0) {
+    writer.writeTextElement(salesRow + QStringLiteral("G3"), vatBaseXml(liabVat));
+    writer.writeTextElement(salesRow + QStringLiteral("G4"), vatAmountXml(liabVat));
+    writer.writeTextElement(QStringLiteral("R10G3"), vatBaseXml(liabVat));
+    writer.writeTextElement(QStringLiteral("R10G4"), vatAmountXml(liabVat));
   }
 
-  if (report.credit.closingDebit.isPositive()) {
-    const std::int64_t vat = report.credit.closingDebit.cents();
-    writer.writeTextElement(QStringLiteral("R101G3"), vatBaseXml(vat));
-    writer.writeTextElement(QStringLiteral("R101G4"), vatAmountXml(vat));
+  if (creditVat > 0) {
+    writer.writeTextElement(QStringLiteral("R101G3"), vatBaseXml(creditVat));
+    writer.writeTextElement(QStringLiteral("R101G4"), vatAmountXml(creditVat));
+    writer.writeTextElement(QStringLiteral("R15G3"), vatBaseXml(creditVat));
+    writer.writeTextElement(QStringLiteral("R15G4"), vatAmountXml(creditVat));
+  }
+
+  const std::int64_t toBudget = liabVat - creditVat;
+  if (toBudget > 0) {
+    writer.writeTextElement(QStringLiteral("R16G3"), vatAmountXml(toBudget));
+  } else if (toBudget < 0) {
+    writer.writeTextElement(QStringLiteral("R17G3"), vatAmountXml(-toBudget));
   }
 
   if (report.budget.closingCredit.isPositive()) {
     writer.writeTextElement(QStringLiteral("R18G3"),
                             vatAmountXml(report.budget.closingCredit.cents()));
   }
+  if (report.budget.closingDebit.isPositive()) {
+    writer.writeTextElement(QStringLiteral("R19G3"),
+                            vatAmountXml(report.budget.closingDebit.cents()));
+  }
 
   writer.writeEndElement();
   writer.writeEndElement();
   writer.writeEndDocument();
+
+  Status check = finalizeDeclar(xml, QStringLiteral("J0200125.xsd"));
+  if (!check) {
+    return Result<QString>::fail(check.error());
+  }
   return Result<QString>::ok(xml);
 }
 
@@ -367,7 +419,7 @@ Result<QString> buildConsolidatedTaxXml(const ConsolidatedTaxReport & report,
   writer.writeEndElement();
   writer.writeEndDocument();
 
-  Status check = validateDeclarStructure(xml, xsd);
+  Status check = finalizeDeclar(xml, xsd);
   if (!check) {
     return Result<QString>::fail(check.error());
   }
@@ -470,7 +522,7 @@ Result<QString> buildAnnex4DfXml(const ConsolidatedTaxReport & report,
   writer.writeEndElement();
   writer.writeEndDocument();
 
-  Status check = validateDeclarStructure(xml, xsd);
+  Status check = finalizeDeclar(xml, xsd);
   if (!check) {
     return Result<QString>::fail(check.error());
   }
@@ -595,7 +647,7 @@ Result<QString> buildAnnexEssD1Xml(const ConsolidatedTaxReport & monthly,
   writer.writeEndElement();
   writer.writeEndDocument();
 
-  Status check = validateDeclarStructure(xml, xsd);
+  Status check = finalizeDeclar(xml, xsd);
   if (!check) {
     return Result<QString>::fail(check.error());
   }
@@ -696,7 +748,98 @@ Result<QString> buildAnnexD5Xml(const ConsolidatedTaxReport & report,
   writer.writeEndElement();
   writer.writeEndDocument();
 
-  Status check = validateDeclarStructure(xml, xsd);
+  Status check = finalizeDeclar(xml, xsd);
+  if (!check) {
+    return Result<QString>::fail(check.error());
+  }
+  return Result<QString>::ok(xml);
+}
+
+Result<QString> buildAnnexD6Xml(const std::vector<Employee> & employees, QDate from, QDate to,
+                               const CompanyProfile & company)
+{
+  if (digits(company.edrpou).isEmpty()) {
+    return Result<QString>::fail(
+        Error::validation(QStringLiteral("у картці підприємства немає ЄДРПОУ")));
+  }
+  const Status taxOffice = requireTaxOffice(company);
+  if (!taxOffice) {
+    return Result<QString>::fail(taxOffice.error());
+  }
+  if (!from.isValid() || !to.isValid() || from > to) {
+    return Result<QString>::fail(Error::validation(QStringLiteral("некоректний період Д6")));
+  }
+
+  const QString prefix = formPrefix(company);
+  const QString xsd = prefix + QStringLiteral("0510611.xsd");
+  const int quarter = (to.month() - 1) / 3 + 1;
+
+  QString xml;
+  QXmlStreamWriter writer(&xml);
+  writer.setAutoFormatting(true);
+  writer.setAutoFormattingIndent(2);
+  startDeclar(writer, xsd);
+
+  DeclarHeadOpts opts;
+  opts.docType = prefix + QStringLiteral("05");
+  opts.docSub = QStringLiteral("106");
+  opts.docVer = QString::fromUtf8(kUnifiedVer);
+  opts.from = from;
+  opts.to = to;
+  opts.periodType = 2;
+  opts.periodMonth = quarter;
+  opts.linkMainCalculation = true;
+  writeDeclarHead(writer, company, opts);
+
+  writer.writeStartElement(QStringLiteral("DECLARBODY"));
+  writeCommonBody(writer, company, to);
+  writer.writeTextElement(QStringLiteral("HNUM"), QStringLiteral("1"));
+  writer.writeTextElement(QStringLiteral("HZKV"), QString::number(quarter));
+
+  int rowNo = 0;
+  for (const Employee & emp : employees) {
+    const QString code = emp.specialSeniorityCode.trimmed();
+    if (code.isEmpty()) {
+      continue;
+    }
+    const int days = calendarDaysEmployed(emp.hiredOn, emp.firedOn, from, to);
+    if (days <= 0) {
+      continue;
+    }
+    ++rowNo;
+    const QString taxId = digits(emp.taxId);
+    writeRowNumText(writer, QStringLiteral("T1RXXXXG02S"), rowNo,
+                    taxId.isEmpty() ? emp.taxId.trimmed() : taxId);
+
+    QString last;
+    QString first;
+    QString middle;
+    splitPersonName(emp.name, &last, &first, &middle);
+    writeRowNumText(writer, QStringLiteral("T1RXXXXG03S"), rowNo, last);
+    writeRowNumText(writer, QStringLiteral("T1RXXXXG04S"), rowNo, first);
+    if (middle.isEmpty()) {
+      writeRowNumNil(writer, QStringLiteral("T1RXXXXG05S"), rowNo);
+    } else {
+      writeRowNumText(writer, QStringLiteral("T1RXXXXG05S"), rowNo, middle);
+    }
+    writeRowNumText(writer, QStringLiteral("T1RXXXXG06S"), rowNo, code);
+    writeRowNumText(writer, QStringLiteral("T1RXXXXG07D"), rowNo,
+                    from.toString(QStringLiteral("dd.MM.yyyy")));
+    writeRowNumText(writer, QStringLiteral("T1RXXXXG08D"), rowNo,
+                    to.toString(QStringLiteral("dd.MM.yyyy")));
+    writeRowNumText(writer, QStringLiteral("T1RXXXXG09I"), rowNo, QString::number(days));
+  }
+
+  writer.writeTextElement(QStringLiteral("R00G01I"), QString::number(rowNo));
+  if (!company.accountant.isEmpty()) {
+    writer.writeTextElement(QStringLiteral("HBOS"), company.accountant);
+  }
+
+  writer.writeEndElement();
+  writer.writeEndElement();
+  writer.writeEndDocument();
+
+  Status check = finalizeDeclar(xml, xsd);
   if (!check) {
     return Result<QString>::fail(check.error());
   }
@@ -787,7 +930,7 @@ Result<QString> buildSingleTaxDeclarationXml(const IncomeBook & book,
   writer.writeEndElement();
   writer.writeEndDocument();
 
-  Status check = validateDeclarStructure(xml, xsd);
+  Status check = finalizeDeclar(xml, xsd);
   if (!check) {
     return Result<QString>::fail(check.error());
   }

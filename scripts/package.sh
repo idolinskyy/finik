@@ -8,9 +8,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD="${FINIK_BUILD_DIR:-$ROOT/build-package}"
 DIST="$ROOT/dist"
 
-cmake -S "$ROOT" -B "$BUILD" \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=/usr
+CMAKE_ARGS=(-DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr)
+if [[ -n "${CMAKE_PREFIX_PATH:-}" ]]; then
+  CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH")
+elif [[ -d "$HOME/Qt/6.10.2/gcc_64" ]]; then
+  CMAKE_ARGS+=(-DCMAKE_PREFIX_PATH="$HOME/Qt/6.10.2/gcc_64")
+fi
+
+cmake -S "$ROOT" -B "$BUILD" "${CMAKE_ARGS[@]}"
 cmake --build "$BUILD" -j"$(nproc)" --target Finik
 
 rm -rf "$DIST"

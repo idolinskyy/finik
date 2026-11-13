@@ -52,12 +52,13 @@ Employee fromQuery(sql::Query & query)
     row.firedOn = QDate::fromString(firedStr, Qt::ISODate);
   }
   row.hasPitBenefit = query.value(10).toInt() != 0;
+  row.specialSeniorityCode = query.value(11).toString();
   return row;
 }
 
 const QString kSelect =
     QStringLiteral("SELECT id, tax_id, name, hired_on, salary_cents, disabled_ssc, is_active, "
-                   "position, department, fired_on, has_pit_benefit "
+                   "position, department, fired_on, has_pit_benefit, special_seniority_code "
                    "FROM employees");
 
 } // namespace
@@ -145,8 +146,8 @@ Result<EmployeeId> EmployeeRepository::insert(const Employee & employee)
   sql::Query query(db_);
   Status status = query.prepare(QStringLiteral(
       "INSERT INTO employees(tax_id, name, hired_on, salary_cents, disabled_ssc, "
-      "is_active, position, department, fired_on, has_pit_benefit) "
-      "VALUES(:tin, :name, :hired, :sal, :dis, :active, :pos, :dept, :fired, :pit)"));
+      "is_active, position, department, fired_on, has_pit_benefit, special_seniority_code) "
+      "VALUES(:tin, :name, :hired, :sal, :dis, :active, :pos, :dept, :fired, :pit, :ssc)"));
   if (!status) {
     return Result<EmployeeId>::fail(status.error());
   }
@@ -162,6 +163,7 @@ Result<EmployeeId> EmployeeRepository::insert(const Employee & employee)
                                            ? QVariant(iso(employee.firedOn))
                                            : QVariant(QMetaType(QMetaType::QString)));
   query.bind(QStringLiteral(":pit"), employee.hasPitBenefit ? 1 : 0);
+  query.bind(QStringLiteral(":ssc"), employee.specialSeniorityCode.trimmed());
   status = query.exec();
   if (!status) {
     if (status.message().contains(QLatin1String("UNIQUE"), Qt::CaseInsensitive)) {
@@ -191,7 +193,7 @@ Status EmployeeRepository::update(const Employee & employee)
       QStringLiteral("UPDATE employees SET tax_id = :tin, name = :name, hired_on = :hired, "
                      "salary_cents = :sal, disabled_ssc = :dis, is_active = :active, "
                      "position = :pos, department = :dept, fired_on = :fired, "
-                     "has_pit_benefit = :pit "
+                     "has_pit_benefit = :pit, special_seniority_code = :ssc "
                      "WHERE id = :id"));
   if (!status) {
     return status;
@@ -208,6 +210,7 @@ Status EmployeeRepository::update(const Employee & employee)
                                            ? QVariant(iso(employee.firedOn))
                                            : QVariant(QMetaType(QMetaType::QString)));
   query.bind(QStringLiteral(":pit"), employee.hasPitBenefit ? 1 : 0);
+  query.bind(QStringLiteral(":ssc"), employee.specialSeniorityCode.trimmed());
   query.bind(QStringLiteral(":id"), static_cast<qlonglong>(employee.id.value));
   status = query.exec();
   if (!status) {

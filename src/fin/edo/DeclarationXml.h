@@ -2,14 +2,18 @@
 
 #include "fin/core/Result.h"
 #include "fin/domain/Company.h"
+#include "fin/domain/Employee.h"
 #include "fin/edo/PayrollTaxDigest.h"
 #include "fin/reports/Reports.h"
 
+#include <vector>
+
+#include <QDate>
 #include <QString>
 
 namespace fin {
 
-// Каркас J0200125 (R011/R101/R18); база від company.vatRateBp; потрібні коди ДПІ.
+// Декларація з ПДВ J0200125: R011/R012, підсумки R10/R15, R16/R17, R18/R19.
 Result<QString> buildVatDeclarationXml(const VatStatement & report, const CompanyProfile & company);
 
 Result<QString> buildBalance1MXml(const BalanceSheet & balance, const IncomeStatement & income,
@@ -30,6 +34,10 @@ Result<QString> buildAnnexEssD1Xml(const ConsolidatedTaxReport & monthly,
 // Додаток Д5 (J/F0510511) — трудові відносини (прийом / звільнення в кварталі).
 Result<QString> buildAnnexD5Xml(const ConsolidatedTaxReport & report,
                                 const CompanyProfile & company);
+
+// Додаток Д6 (J/F0510611) — спеціальний стаж (код у картці працівника).
+Result<QString> buildAnnexD6Xml(const std::vector<Employee> & employees, QDate from, QDate to,
+                               const CompanyProfile & company);
 
 // Декларація ЄП 3 групи (F0103308 / J0103508).
 // priorPeriodTax → R13; priorMilitary → R24 (для розрахунку R14 / R25).

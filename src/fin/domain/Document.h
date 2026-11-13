@@ -85,6 +85,36 @@ struct DocumentLine
   WarehouseId warehouseId; // склад рядка (якщо відрізняється від складу документа)
   CounterpartyId counterpartyId; // контрагент рядка (переоцінка 362/632; ЗС 361/631; інакше — з документа)
   ContractId contractId; // договір рядка (ЗС 361/631; інакше — з шапки документа)
+  // Довільні субконто (source_table = subconto_items): стаття витрат тощо.
+  std::int64_t customSubconto1Id = 0;
+  std::int64_t customSubconto2Id = 0;
+  std::int64_t customSubconto3Id = 0;
+
+  std::int64_t customSubcontoId(int slot) const
+  {
+    if (slot == 1) {
+      return customSubconto1Id;
+    }
+    if (slot == 2) {
+      return customSubconto2Id;
+    }
+    if (slot == 3) {
+      return customSubconto3Id;
+    }
+    return 0;
+  }
+
+  void setCustomSubcontoId(int slot, std::int64_t entityId)
+  {
+    if (slot == 1) {
+      customSubconto1Id = entityId;
+    } else if (slot == 2) {
+      customSubconto2Id = entityId;
+    } else if (slot == 3) {
+      customSubconto3Id = entityId;
+    }
+  }
+
   Quantity quantity = Quantity::zero();
   Money unitPrice = Money::zero();
   int vatRateBp = 0;         // ставка ПДВ у базисних пунктах (2000 = 20%)

@@ -64,6 +64,7 @@ struct Employee
   QString department; // підрозділ (текстова назва)
   QDate firedOn; // дата звільнення (невалідна = не звільнений)
   bool hasPitBenefit = false; // право на ПСП (п. 169.1 ПКУ): зменшує базу ПДФО
+  QString specialSeniorityCode; // код підстави спецстажу для додатка Д6 (порожньо = немає)
 };
 
 // Тип кадрового наказу

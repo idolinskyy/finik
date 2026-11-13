@@ -14,7 +14,7 @@ class Database
  public:
   // Версія схеми БД. При зміні структури таблиць збільшуйте цей номер
   // і додавайте міграційний крок у Database::migrate().
-  static constexpr int kSchemaVersion = 27;
+  static constexpr int kSchemaVersion = 29;
 
   // Відкриває або створює файл *.fin; повертає помилку, якщо схема
   // несумісна або файл пошкоджений.

@@ -14,6 +14,7 @@
 #include "ui/ConsolidatedTaxPage.h"
 #include "ui/CounterpartyPage.h"
 #include "ui/ContractPage.h"
+#include "ui/SubcontoItemPage.h"
 #include "ui/CounterpartyTurnoverPage.h"
 #include "ui/CurrencyPage.h"
 #include "ui/DashboardPage.h"
@@ -318,6 +319,9 @@ MainWindow::MainWindow(LedgerSession & session, QWidget * parent)
   addItem(gRef, QStringLiteral("Договори"), 26,
           QStringLiteral("Договори з покупцями та постачальниками для аналітики документів."),
           QStringLiteral(":/help/icons/document.svg"));
+  addItem(gRef, QStringLiteral("Статті витрат"), 29,
+          QStringLiteral("Довільні субконто: статті витрат і власні аналітичні довідники."),
+          QStringLiteral(":/help/icons/report.svg"));
   addItem(gRef, QStringLiteral("Номенклатура"), 2, QStringLiteral(""),
           QStringLiteral(":/help/icons/cube.svg"));
   addItem(gRef, QStringLiteral("Специфікації (BOM)"), 3,
@@ -405,10 +409,11 @@ MainWindow::MainWindow(LedgerSession & session, QWidget * parent)
           [this](int index) { tabs_->removeTab(index); });
 
   // Store all pages in a vector so we can add them to tabs on demand
-  pages_.resize(29);
+  pages_.resize(30);
   accounts_ = new AccountPage(session_);
   counterparties_ = new CounterpartyPage(session_);
   contracts_ = new ContractPage(session_);
+  subcontoItems_ = new SubcontoItemPage(session_);
   nomenclature_ = new NomenclaturePage(session_);
   bom_ = new BomPage(session_);
   warehouses_ = new WarehousePage(session_);
@@ -494,6 +499,7 @@ MainWindow::MainWindow(LedgerSession & session, QWidget * parent)
   pages_[24] = analysis_;
   pages_[26] = contracts_;
   pages_[27] = subcontoOsv_;
+  pages_[29] = subcontoItems_;
 
   layout->addWidget(nav);
   layout->addWidget(tabs_, 1);
@@ -522,6 +528,9 @@ MainWindow::MainWindow(LedgerSession & session, QWidget * parent)
       break;
     case 26:
       contracts_->reload();
+      break;
+    case 29:
+      subcontoItems_->reload();
       break;
     case 2:
       nomenclature_->reload();

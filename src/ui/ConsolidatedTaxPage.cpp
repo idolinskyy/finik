@@ -1,5 +1,6 @@
 #include "ui/ConsolidatedTaxPage.h"
 
+#include "fin/domain/Employee.h"
 #include "fin/edo/DeclarationXml.h"
 #include "ui/UiSupport.h"
 
@@ -47,6 +48,8 @@ ConsolidatedTaxPage::ConsolidatedTaxPage(LedgerSession & session, QWidget * pare
                                        QStringLiteral("XML Д1 (ЄСВ)"));
   auto * btnExportD5 = new QPushButton(ui::themeIcon(QStringLiteral(":/help/icons/document.svg")),
                                        QStringLiteral("XML Д5"));
+  auto * btnExportD6 = new QPushButton(ui::themeIcon(QStringLiteral(":/help/icons/document.svg")),
+                                       QStringLiteral("XML Д6"));
 
   bar->addWidget(new QLabel(QStringLiteral("Рік:")));
   bar->addWidget(year_);
@@ -57,6 +60,7 @@ ConsolidatedTaxPage::ConsolidatedTaxPage(LedgerSession & session, QWidget * pare
   bar->addWidget(btnExport4Df);
   bar->addWidget(btnExportD1);
   bar->addWidget(btnExportD5);
+  bar->addWidget(btnExportD6);
   bar->addStretch();
 
   layout->addLayout(bar);
@@ -94,6 +98,7 @@ ConsolidatedTaxPage::ConsolidatedTaxPage(LedgerSession & session, QWidget * pare
   connect(btnExport4Df, &QPushButton::clicked, this, &ConsolidatedTaxPage::doExport4Df);
   connect(btnExportD1, &QPushButton::clicked, this, &ConsolidatedTaxPage::doExportD1);
   connect(btnExportD5, &QPushButton::clicked, this, &ConsolidatedTaxPage::doExportD5);
+  connect(btnExportD6, &QPushButton::clicked, this, &ConsolidatedTaxPage::doExportD6);
 }
 
 void ConsolidatedTaxPage::rebuild()
@@ -254,6 +259,31 @@ void ConsolidatedTaxPage::doExportD5()
   }
   const QString name = QStringLiteral("J0510511_%1_Q%2.xml").arg(report_.year).arg(report_.quarter);
   saveXmlFile(QStringLiteral("Зберегти додаток Д5 XML"), name, xml.value());
+}
+
+void ConsolidatedTaxPage::doExportD6()
+{
+  if (!ensureReport()) {
+    return;
+  }
+  const Result<CompanyProfile> company = session_.company().load();
+  if (!company) {
+    ui::showError(this, company.error());
+    return;
+  }
+  const Result<std::vector<Employee>> employees = session_.employees().listAll();
+  if (!employees) {
+    ui::showError(this, employees.error());
+    return;
+  }
+  const Result<QString> xml =
+      buildAnnexD6Xml(employees.value(), report_.from, report_.to, company.value());
+  if (!xml) {
+    ui::showError(this, xml.error());
+    return;
+  }
+  const QString name = QStringLiteral("J0510611_%1_Q%2.xml").arg(report_.year).arg(report_.quarter);
+  saveXmlFile(QStringLiteral("Зберегти додаток Д6 XML"), name, xml.value());
 }
 
 } // namespace fin

@@ -36,6 +36,15 @@ class SubcontoRepository
   // Заповнює текстові назви для всіх непустих значень у наборі субконто
   Status resolveNames(SubcontoSet & set) const;
 
+  Result<std::vector<SubcontoItem>> listItems(const QString & kindId, bool activeOnly = false) const;
+  Result<SubcontoItem> findItem(std::int64_t id) const;
+  Result<std::int64_t> insertItem(const SubcontoItem & item);
+  Status updateItem(const SubcontoItem & item);
+  Status removeItem(std::int64_t id);
+
+  // Новий довільний вид (source_table завжди subconto_items). Системні id заборонені.
+  Status insertCustomKind(const QString & id, const QString & nameUa);
+
  private:
   QSqlDatabase db_;
 };

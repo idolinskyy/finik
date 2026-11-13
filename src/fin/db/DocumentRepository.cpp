@@ -105,7 +105,8 @@ Result<std::vector<DocumentLine>> DocumentRepository::loadLines(DocumentId id) c
                      "amount_cents, description, nomenclature_id, quantity_milli, "
                      "price_cents, fixed_asset_id, low_value_id, intangible_id, "
                      "vat_rate_bp, vat_cents, posting_date, employee_id, warehouse_id, "
-                     "counterparty_id, contract_id "
+                     "counterparty_id, contract_id, "
+                     "custom_subconto1_id, custom_subconto2_id, custom_subconto3_id "
                      "FROM document_lines "
                      "WHERE document_id = :id ORDER BY line_no"));
   if (!status) {
@@ -164,6 +165,9 @@ Result<std::vector<DocumentLine>> DocumentRepository::loadLines(DocumentId id) c
     if (contract > 0) {
       line.contractId = ContractId{contract};
     }
+    line.customSubconto1Id = query.value(18).toLongLong();
+    line.customSubconto2Id = query.value(19).toLongLong();
+    line.customSubconto3Id = query.value(20).toLongLong();
     lines.push_back(line);
   }
   return Result<std::vector<DocumentLine>>::ok(std::move(lines));
@@ -503,9 +507,11 @@ Status DocumentRepository::replaceLines(DocumentId id, const std::vector<Documen
                      "debit_account_id, credit_account_id, amount_cents, description, "
                      "nomenclature_id, quantity_milli, price_cents, fixed_asset_id, "
                      "low_value_id, intangible_id, vat_rate_bp, vat_cents, posting_date, "
-                     "employee_id, warehouse_id, counterparty_id, contract_id) "
+                     "employee_id, warehouse_id, counterparty_id, contract_id, "
+                     "custom_subconto1_id, custom_subconto2_id, custom_subconto3_id) "
                      "VALUES(:doc, :no, :dt, :ct, :amt, :desc, :nom, :qty, :price, :fa, "
-                     ":ms, :ia, :vatrate, :vat, :pdate, :emp, :wh, :cp, :contract)"));
+                     ":ms, :ia, :vatrate, :vat, :pdate, :emp, :wh, :cp, :contract, "
+                     ":cs1, :cs2, :cs3)"));
   if (!status) {
     return status;
   }
@@ -566,6 +572,16 @@ Status DocumentRepository::replaceLines(DocumentId id, const std::vector<Documen
     } else {
       insert.bind(QStringLiteral(":contract"), QVariant());
     }
+    const auto bindCustom = [&](const QString & name, std::int64_t entityId) {
+      if (entityId > 0) {
+        insert.bind(name, static_cast<qlonglong>(entityId));
+      } else {
+        insert.bind(name, QVariant());
+      }
+    };
+    bindCustom(QStringLiteral(":cs1"), line.customSubconto1Id);
+    bindCustom(QStringLiteral(":cs2"), line.customSubconto2Id);
+    bindCustom(QStringLiteral(":cs3"), line.customSubconto3Id);
     status = insert.exec();
     if (!status) {
       return status;

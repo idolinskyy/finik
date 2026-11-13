@@ -36,6 +36,7 @@ constexpr Topic kTopics[] = {
     {"bank.html", "Банк і виписка 311"},
     {"currency.html", "Валюти та курси"},
     {"posting.html", "Проведення"},
+    {"subconto.html", "Статті витрат і субконто"},
     {"period.html", "Закритий період"},
     {"reports.html", "ОСВ, баланс, склад"},
     {"settlements.html", "Аванси і акт звірки"},
@@ -154,6 +155,8 @@ QString HelpBrowser::topicForNavRow(int row)
     return QStringLiteral("settlements.html");
   case 26: // Договори
     return QStringLiteral("goods.html");
+  case 29: // Статті витрат
+    return QStringLiteral("subconto.html");
   case 2: // Номенклатура
   case 4: // Склади
     return QStringLiteral("goods.html");

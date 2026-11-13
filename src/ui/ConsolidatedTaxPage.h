@@ -26,6 +26,7 @@ class ConsolidatedTaxPage : public QWidget
   void doExport4Df();
   void doExportD1();
   void doExportD5();
+  void doExportD6();
   bool ensureReport();
   bool saveXmlFile(const QString & title, const QString & suggestedName, const QString & xml);
 

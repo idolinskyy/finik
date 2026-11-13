@@ -82,6 +82,22 @@ inline const QString IntangibleAsset = QStringLiteral("intangible_asset");
 inline const QString LowValue = QStringLiteral("low_value");
 inline const QString Employee = QStringLiteral("employee");
 inline const QString Contract = QStringLiteral("contract");
+inline const QString ExpenseArticle = QStringLiteral("expense_article");
 } // namespace subconto_kinds
+
+inline bool isCustomSubcontoSource(const QString & sourceTable)
+{
+  return sourceTable.compare(QStringLiteral("subconto_items"), Qt::CaseInsensitive) == 0;
+}
+
+// Елемент довільного довідника субконто (статті витрат тощо).
+struct SubcontoItem
+{
+  std::int64_t id = 0;
+  QString kindId;
+  QString code;
+  QString name;
+  bool isActive = true;
+};
 
 } // namespace fin

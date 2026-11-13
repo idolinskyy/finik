@@ -14,6 +14,7 @@ set(CMAKE_AUTORCC ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Sql PrintSupport Network)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Sql PrintSupport Network)
 find_package(Catch2 3 REQUIRED)
+find_package(LibXml2 QUIET)
 
 function(fin_warnings target)
   if(MSVC)
@@ -47,6 +48,7 @@ set(FIN_CORE_SOURCES
   src/fin/currency/NbuRateClient.cpp
   src/fin/edo/TaxInvoiceXml.cpp
   src/fin/edo/DeclarationXml.cpp
+  src/fin/edo/XsdValidator.cpp
   src/fin/edo/PayrollTaxDigest.cpp
   src/fin/auth/Access.cpp
   src/fin/auth/Password.cpp
@@ -96,6 +98,10 @@ add_library(fin_core STATIC ${FIN_CORE_SOURCES})
 target_include_directories(fin_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(fin_core PUBLIC Qt${QT_VERSION_MAJOR}::Sql Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Network)
 target_compile_definitions(fin_core PUBLIC FIN_VERSION="${PROJECT_VERSION}")
+if(LibXml2_FOUND)
+  target_link_libraries(fin_core PRIVATE LibXml2::LibXml2)
+  target_compile_definitions(fin_core PRIVATE FINIK_HAVE_LIBXML2=1)
+endif()
 fin_warnings(fin_core)
 
 set(FIN_UI_SOURCES
@@ -109,6 +115,8 @@ set(FIN_UI_SOURCES
   src/ui/CounterpartyPage.h
   src/ui/ContractPage.cpp
   src/ui/ContractPage.h
+  src/ui/SubcontoItemPage.cpp
+  src/ui/SubcontoItemPage.h
   src/ui/NomenclaturePage.cpp
   src/ui/NomenclaturePage.h
   src/ui/BomPage.cpp

@@ -23,6 +23,7 @@ class AccountPage;
 class SubcontoTrialBalancePage;
 class CounterpartyPage;
 class ContractPage;
+class SubcontoItemPage;
 class CurrencyPage;
 class DocumentJournalPage;
 class EmployeePage;
@@ -85,6 +86,7 @@ class MainWindow : public QMainWindow
   AccountPage * accounts_ = nullptr;
   CounterpartyPage * counterparties_ = nullptr;
   ContractPage * contracts_ = nullptr;
+  SubcontoItemPage * subcontoItems_ = nullptr;
   NomenclaturePage * nomenclature_ = nullptr;
   BomPage * bom_ = nullptr;
   WarehousePage * warehouses_ = nullptr;

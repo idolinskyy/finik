@@ -941,6 +941,74 @@ Status applyDocumentLineContractMigration(QSqlDatabase db)
   return txn.commit();
 }
 
+Status applyCustomSubcontoMigration(QSqlDatabase db)
+{
+  Transaction txn(db);
+  if (!txn.started()) {
+    return txn.startError();
+  }
+  const QStringList stmts = {
+      QStringLiteral(
+          "CREATE TABLE subconto_items ("
+          "  id INTEGER PRIMARY KEY,"
+          "  kind_id TEXT NOT NULL REFERENCES subconto_kinds(id) ON DELETE CASCADE,"
+          "  code TEXT NOT NULL,"
+          "  name TEXT NOT NULL,"
+          "  is_active INTEGER NOT NULL DEFAULT 1 CHECK(is_active IN (0,1)),"
+          "  CHECK(length(trim(code)) > 0),"
+          "  CHECK(length(trim(name)) > 0),"
+          "  UNIQUE(kind_id, code)"
+          ")"),
+      QStringLiteral("CREATE INDEX idx_subconto_items_kind ON subconto_items(kind_id)"),
+      QStringLiteral("ALTER TABLE document_lines ADD COLUMN custom_subconto1_id INTEGER "
+                     "REFERENCES subconto_items(id) ON DELETE RESTRICT"),
+      QStringLiteral("ALTER TABLE document_lines ADD COLUMN custom_subconto2_id INTEGER "
+                     "REFERENCES subconto_items(id) ON DELETE RESTRICT"),
+      QStringLiteral("ALTER TABLE document_lines ADD COLUMN custom_subconto3_id INTEGER "
+                     "REFERENCES subconto_items(id) ON DELETE RESTRICT"),
+      QStringLiteral(
+          "INSERT INTO subconto_kinds(id, name_ua, source_table, id_column, name_column) VALUES "
+          "('expense_article', 'Статті витрат', 'subconto_items', 'id', 'name')"),
+      QStringLiteral("INSERT INTO subconto_items(kind_id, code, name, is_active) VALUES "
+                     "('expense_article', 'RENT', 'Оренда', 1),"
+                     "('expense_article', 'COMM', 'Зв''язок', 1),"
+                     "('expense_article', 'STAT', 'Канцтовари', 1),"
+                     "('expense_article', 'UTIL', 'Комунальні послуги', 1),"
+                     "('expense_article', 'BANK', 'Банківські послуги', 1)"),
+      QStringLiteral(
+          "INSERT OR IGNORE INTO account_subconto(account_id, line_no, subconto_kind_id, "
+          "is_required) "
+          "SELECT id, 1, 'expense_article', 0 FROM accounts WHERE code IN ('91', '92', '93')")};
+  Status status = applyStatements(db, stmts);
+  if (!status) {
+    return status;
+  }
+  status = recordMigration(db, 28);
+  if (!status) {
+    return status;
+  }
+  return txn.commit();
+}
+
+Status applySpecialSeniorityMigration(QSqlDatabase db)
+{
+  Transaction txn(db);
+  if (!txn.started()) {
+    return txn.startError();
+  }
+  const QStringList stmts = {QStringLiteral("ALTER TABLE employees ADD COLUMN "
+                                            "special_seniority_code TEXT")};
+  Status status = applyStatements(db, stmts);
+  if (!status) {
+    return status;
+  }
+  status = recordMigration(db, 29);
+  if (!status) {
+    return status;
+  }
+  return txn.commit();
+}
+
 // Міграція 21: розширений кадровий облік (1.5 дорожньої карти).
 // Додає до таблиці employees поля посади, підрозділу, дати звільнення та
 // прапорець Податкової соціальної пільги (ПСП, п. 169 ПКУ).
@@ -1389,6 +1457,18 @@ Status Database::migrate()
   }
   if (current < 27) {
     status = applyDocumentLineContractMigration(db_);
+    if (!status) {
+      return status;
+    }
+  }
+  if (current < 28) {
+    status = applyCustomSubcontoMigration(db_);
+    if (!status) {
+      return status;
+    }
+  }
+  if (current < 29) {
+    status = applySpecialSeniorityMigration(db_);
     if (!status) {
       return status;
     }

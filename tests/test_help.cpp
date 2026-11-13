@@ -143,6 +143,10 @@ TEST_CASE("help pages in qrc exist, link to each other, and name the product")
       {"posting.html", "бухгалтер"},
       {"posting.html", "Договір"},
       {"posting.html", "контрагент і договір"},
+      {"posting.html", "Статті витрат"},
+      {"subconto.html", "Статті витрат"},
+      {"subconto.html", "довільні довідники субконто"},
+      {"index.html", "Статті витрат"},
       {"from-1c.html", "контрагента і договір"},
       {"reports.html", "договір — у тому ж рядку"},
       {"from-1c.html", "Договір» і «Працівник"},
@@ -219,6 +223,7 @@ TEST_CASE("help pages in qrc exist, link to each other, and name the product")
       {"payroll.html", "661"},
       {"payroll.html", "ПДФО"},
       {"payroll.html", "ПСП"},
+      {"payroll.html", "Код спецстажу (Д6)"},
       {"payroll.html", "П-6"},
       {"payroll.html", "shots/employees.png"},
       {"payroll.html", "shots/payroll.png"},
@@ -259,6 +264,9 @@ TEST_CASE("help pages in qrc exist, link to each other, and name the product")
       {"backup.html", "одночасний запис"},
       {"edo.html", "не файл для подачі"},
       {"tax.html", "не замінює подачу"},
+      {"tax.html", "XML Д6"},
+      {"tax.html", "FINIK_XSD_DIR"},
+      {"edo.html", "FINIK_XSD_DIR"},
       {"backup.html", ".local/share/Finik/Finik"},
       {"backup.html", "finik.sqlite.before-restore"},
       {"settings.html", ".local/share/Finik/Finik"},
@@ -326,6 +334,7 @@ TEST_CASE("F1 topicForNavRow matches MainWindow nav ids")
   REQUIRE(HelpBrowser::topicForNavRow(26) == QStringLiteral("goods.html"));
   REQUIRE(HelpBrowser::topicForNavRow(27) == QStringLiteral("reports.html"));
   REQUIRE(HelpBrowser::topicForNavRow(28) == QStringLiteral("reports.html"));
+  REQUIRE(HelpBrowser::topicForNavRow(29) == QStringLiteral("subconto.html"));
   REQUIRE(HelpBrowser::topicForDocument(DocumentType::MaterialIssue) ==
           QStringLiteral("production.html"));
   REQUIRE(HelpBrowser::topicForDocument(DocumentType::ExpenseReport) ==

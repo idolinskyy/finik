@@ -219,7 +219,11 @@ Status AccountRepository::seedChartIfEmpty()
                      "SELECT id, 1, 'low_value', 1 FROM accounts WHERE code IN ('22')"),
       QStringLiteral("INSERT OR IGNORE INTO account_subconto(account_id, line_no, "
                      "subconto_kind_id, is_required) "
-                     "SELECT id, 1, 'employee', 1 FROM accounts WHERE code IN ('661')")};
+                     "SELECT id, 1, 'employee', 1 FROM accounts WHERE code IN ('661')"),
+      QStringLiteral("INSERT OR IGNORE INTO account_subconto(account_id, line_no, "
+                     "subconto_kind_id, is_required) "
+                     "SELECT id, 1, 'expense_article', 0 FROM accounts WHERE code IN ('91', '92', "
+                     "'93')")};
   for (const QString & stmt : subcontoSeeds) {
     sql::Query subQuery(db_);
     status = subQuery.exec(stmt);

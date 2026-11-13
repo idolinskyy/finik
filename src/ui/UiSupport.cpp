@@ -3,6 +3,7 @@
 #include "fin/domain/Contract.h"
 #include "fin/domain/Counterparty.h"
 #include "fin/domain/Currency.h"
+#include "fin/domain/Subconto.h"
 #include "fin/domain/Employee.h"
 #include "fin/domain/FixedAsset.h"
 #include "fin/domain/IntangibleAsset.h"
@@ -889,6 +890,34 @@ void fillEmployeeCombo(QComboBox * combo, LedgerSession & session, EmployeeId se
 EmployeeId selectedEmployee(const QComboBox * combo)
 {
   return EmployeeId{combo->currentData().toLongLong()};
+}
+
+void fillCustomSubcontoCombo(QComboBox * combo, LedgerSession & session, const QString & kindId,
+                             std::int64_t selected)
+{
+  combo->clear();
+  combo->addItem(QStringLiteral("—"), QVariant::fromValue(qlonglong(0)));
+  const Result<std::vector<SubcontoItem>> list = session.subconto().listItems(kindId, true);
+  if (!list) {
+    return;
+  }
+  int index = 0;
+  for (const SubcontoItem & row : list.value()) {
+    QString label = row.name;
+    if (!row.code.isEmpty()) {
+      label = row.code + QStringLiteral("  ") + row.name;
+    }
+    combo->addItem(label, QVariant::fromValue(static_cast<qlonglong>(row.id)));
+    if (row.id == selected) {
+      index = combo->count() - 1;
+    }
+  }
+  combo->setCurrentIndex(index);
+}
+
+std::int64_t selectedCustomSubconto(const QComboBox * combo)
+{
+  return combo->currentData().toLongLong();
 }
 
 } // namespace fin::ui

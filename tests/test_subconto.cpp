@@ -2,6 +2,7 @@
 
 #include "fin/db/UserRepository.h"
 #include "fin/domain/ChartCodes.h"
+#include "fin/domain/User.h"
 #include "fin/domain/Contract.h"
 #include "fin/domain/DocumentBlueprint.h"
 #include "fin/domain/MonthClose.h"
@@ -377,4 +378,110 @@ TEST_CASE("Subconto trial balance expands all dimensions as a tree", "[subconto]
   REQUIRE_FALSE(flat.value().hierarchical);
   REQUIRE(flat.value().rows.size() == 2);
   REQUIRE(flat.value().totals.closingDebit == Money::fromCents(18000));
+}
+
+TEST_CASE("Custom subconto: expense articles seed, post and required check", "[subconto]")
+{
+  LedgerSession session = openSession();
+  REQUIRE(session.accounts().seedChartIfEmpty());
+
+  auto kinds = session.subconto().findKind(subconto_kinds::ExpenseArticle);
+  REQUIRE(kinds);
+  CHECK(isCustomSubcontoSource(kinds.value().sourceTable));
+
+  const AccountId acc92 = account(session, chart::kAdminExpense);
+  const AccountId acc311 = account(session, chart::kBank);
+  auto bound = session.subconto().listForAccount(acc92);
+  REQUIRE(bound);
+  REQUIRE_FALSE(bound.value().empty());
+  CHECK(bound.value()[0].subcontoKindId == subconto_kinds::ExpenseArticle);
+  CHECK(bound.value()[0].isRequired == false);
+
+  auto items = session.subconto().listItems(subconto_kinds::ExpenseArticle, true);
+  REQUIRE(items);
+  REQUIRE(items.value().size() >= 3);
+  const std::int64_t articleId = items.value().front().id;
+
+  Document optionalDoc = makeDoc(DocumentType::Manual, QDate(2026, 5, 10), QStringLiteral("БО-ст"));
+  DocumentLine optionalLine = line(acc92, acc311, 15000);
+  optionalLine.customSubconto1Id = articleId;
+  optionalDoc.lines.push_back(optionalLine);
+  const DocumentId postedId = saveAndPost(session, optionalDoc);
+
+  const Result<std::vector<LedgerEntry>> entries = session.ledger().listForDocument(postedId);
+  REQUIRE(entries);
+  REQUIRE(entries.value().size() == 1);
+  CHECK(entries.value()[0].debitSubconto.s1.kindId == subconto_kinds::ExpenseArticle);
+  CHECK(entries.value()[0].debitSubconto.s1.entityId == articleId);
+
+  const auto tb =
+      session.subcontoTrialBalance().build(acc92, 1, QDate(2026, 5, 1), QDate(2026, 5, 31));
+  REQUIRE(tb);
+  REQUIRE(tb.value().rows.size() == 1);
+  CHECK(tb.value().rows[0].subconto.entityId == articleId);
+  CHECK(tb.value().rows[0].turnoverDebit == Money::fromCents(15000));
+
+  std::vector<AccountSubconto> required = bound.value();
+  required[0].isRequired = true;
+  REQUIRE(session.subconto().setForAccount(acc92, required));
+
+  Document missing = makeDoc(DocumentType::Manual, QDate(2026, 5, 11), QStringLiteral("БО-немає"));
+  missing.lines.push_back(line(acc92, acc311, 2000));
+  const Result<DocumentId> missingId = session.documents().insert(missing);
+  REQUIRE(missingId);
+  CHECK_FALSE(session.posting().post(missingId.value()));
+
+  Document withArticle =
+      makeDoc(DocumentType::Manual, QDate(2026, 5, 12), QStringLiteral("БО-є"));
+  DocumentLine filled = line(acc92, acc311, 2000);
+  filled.customSubconto1Id = articleId;
+  withArticle.lines.push_back(filled);
+  CHECK(saveAndPost(session, withArticle).isValid());
+}
+
+TEST_CASE("Custom subconto: items CRUD, new kind, viewer cannot edit", "[subconto]")
+{
+  LedgerSession session = openSession();
+
+  SubcontoItem item;
+  item.kindId = subconto_kinds::ExpenseArticle;
+  item.code = QStringLiteral("IT");
+  item.name = QStringLiteral("IT-послуги");
+  const Result<std::int64_t> id = session.subconto().insertItem(item);
+  REQUIRE(id);
+  Result<SubcontoItem> found = session.subconto().findItem(id.value());
+  REQUIRE(found);
+  CHECK(found.value().name == QStringLiteral("IT-послуги"));
+
+  found.value().name = QStringLiteral("IT та зв'язок");
+  REQUIRE(session.subconto().updateItem(found.value()));
+  REQUIRE(session.subconto().removeItem(id.value()));
+  CHECK_FALSE(session.subconto().findItem(id.value()));
+
+  REQUIRE(session.subconto().insertCustomKind(QStringLiteral("cost_center"),
+                                              QStringLiteral("Центри витрат")));
+  CHECK_FALSE(session.subconto().insertCustomKind(QStringLiteral("cost_center"),
+                                                  QStringLiteral("дубль")));
+  CHECK_FALSE(session.subconto().insertCustomKind(QStringLiteral("X"), QStringLiteral("коротко")));
+
+  SubcontoItem center;
+  center.kindId = QStringLiteral("cost_center");
+  center.code = QStringLiteral("ADM");
+  center.name = QStringLiteral("Адміністрація");
+  REQUIRE(session.subconto().insertItem(center));
+
+  UserRepository users(session.handle());
+  User viewer;
+  viewer.login = QStringLiteral("oglyad-article");
+  viewer.displayName = viewer.login;
+  viewer.role = UserRole::Viewer;
+  const Result<UserId> viewerId = users.insert(viewer);
+  REQUIRE(viewerId);
+  REQUIRE(users.setCurrentUser(viewerId.value()));
+  SubcontoItem blocked;
+  blocked.kindId = subconto_kinds::ExpenseArticle;
+  blocked.code = QStringLiteral("X1");
+  blocked.name = QStringLiteral("Заборона");
+  CHECK_FALSE(session.subconto().insertItem(blocked));
+  CHECK_FALSE(session.subconto().insertCustomKind(QStringLiteral("dept"), QStringLiteral("Відділ")));
 }

@@ -81,7 +81,7 @@ SQLite (WAL). Qt кладе дані в `organizationName/applicationName` (об
 ## Документація
 
 - [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) — гайд для розробника без бухгалтерії: дебет/кредит, рахунки, карта C++ файлів.
-- [PROJECT_DOCS.md](PROJECT_DOCS.md) — підсистеми, схема БД (v27), проведення.
+- [PROJECT_DOCS.md](PROJECT_DOCS.md) — підсистеми, схема БД (v29), проведення.
 - [docs/ROADMAP_1C.md](docs/ROADMAP_1C.md) — що є / частково / план.
 - [CONTRIBUTING.md](CONTRIBUTING.md) — стандарти коду. Вбудована довідка бухгалтера — F1 (`help/*.html`).
 

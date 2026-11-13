@@ -48,6 +48,8 @@ bool editEmployee(QWidget * parent, Employee & row)
   pitBenefit->setChecked(row.hasPitBenefit);
   pitBenefit->setToolTip(
       QStringLiteral("Зменшує базу ПДФО на 1 340 грн, якщо нараховано ≤ 3 540 грн (ставки 2026)."));
+  auto * seniority = new QLineEdit(row.specialSeniorityCode);
+  seniority->setPlaceholderText(QStringLiteral("порожньо = немає рядка в Д6"));
   auto * department = new QLineEdit(row.department);
   auto * active = new QCheckBox(QStringLiteral("Працює"));
   active->setChecked(row.isActive);
@@ -60,6 +62,7 @@ bool editEmployee(QWidget * parent, Employee & row)
   form->addRow(QStringLiteral("Прийнято"), hired);
   form->addRow(QString(), disabled);
   form->addRow(QString(), pitBenefit);
+  form->addRow(QStringLiteral("Код спецстажу (Д6)"), seniority);
   form->addRow(QString(), active);
 
   auto * buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
@@ -69,7 +72,7 @@ bool editEmployee(QWidget * parent, Employee & row)
   auto * layout = new QVBoxLayout(&dialog);
   layout->addLayout(form);
   layout->addWidget(buttons);
-  dialog.resize(420, 260);
+  dialog.resize(440, 300);
   if (dialog.exec() != QDialog::Accepted) {
     return false;
   }
@@ -84,6 +87,7 @@ bool editEmployee(QWidget * parent, Employee & row)
   row.hiredOn = hired->date();
   row.disabledSsc = disabled->isChecked();
   row.hasPitBenefit = pitBenefit->isChecked();
+  row.specialSeniorityCode = seniority->text().trimmed();
   row.isActive = active->isChecked();
   return true;
 }

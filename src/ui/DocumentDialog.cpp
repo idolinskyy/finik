@@ -17,6 +17,7 @@
 
 #include "fin/core/Quantity.h"
 #include "fin/domain/DocumentBlueprint.h"
+#include "fin/domain/Subconto.h"
 #include "fin/domain/Employee.h"
 #include "fin/domain/FixedAsset.h"
 #include "fin/domain/IntangibleAsset.h"
@@ -61,7 +62,7 @@ DocumentDialog::DocumentDialog(LedgerSession & session, Document document, QWidg
     : QDialog(parent), session_(session), document_(std::move(document))
 {
   setWindowTitle(documentTypeLabelUk(document_.type));
-  resize(1100, 560);
+  resize(1240, 560);
   setWhatsThis(
       QStringLiteral("Форма бухгалтерської проводки: дебет, кредит, сума. Для товару й каси "
                      "відкривайте відповідні документи з журналу — там немає колонок Дт/Кт."));
@@ -100,12 +101,12 @@ DocumentDialog::DocumentDialog(LedgerSession & session, Document document, QWidg
   form->addRow(QStringLiteral("Працівник"), employee_);
 
   lines_ = new QTableWidget;
-  lines_->setColumnCount(7);
+  lines_->setColumnCount(8);
   lines_->setHorizontalHeaderLabels({QStringLiteral("Дебет"), QStringLiteral("Кредит"),
                                      QStringLiteral("Номенклатура"), QStringLiteral("К-сть"),
                                      QStringLiteral("Ціна"), QStringLiteral("Сума"),
-                                     QStringLiteral("Зміст")});
-  lines_->horizontalHeader()->setSectionResizeMode(6, QHeaderView::Stretch);
+                                     QStringLiteral("Стаття"), QStringLiteral("Зміст")});
+  lines_->horizontalHeader()->setSectionResizeMode(7, QHeaderView::Stretch);
   lines_->verticalHeader()->setVisible(false);
 
   auto * addLine = new QPushButton(ui::themeIcon(QStringLiteral(":/help/icons/add.svg")),
@@ -479,6 +480,16 @@ void DocumentDialog::addLineRow(const DocumentLine & line)
   price->setAlignment(Qt::AlignRight);
   auto * amount = new QLineEdit(line.amount.isZero() ? QString() : line.amount.toDisplay());
   amount->setAlignment(Qt::AlignRight);
+  auto * article = new QComboBox;
+  article->setObjectName(QStringLiteral("customSubcontoCombo"));
+  std::int64_t selectedArticle = line.customSubconto1Id;
+  if (selectedArticle <= 0) {
+    selectedArticle = line.customSubconto2Id;
+  }
+  if (selectedArticle <= 0) {
+    selectedArticle = line.customSubconto3Id;
+  }
+  ui::fillCustomSubcontoCombo(article, session_, subconto_kinds::ExpenseArticle, selectedArticle);
   auto * description = new QLineEdit(line.description);
   bindQtyPrice(qty, price, amount);
   bool lockDebit = false;
@@ -493,13 +504,15 @@ void DocumentDialog::addLineRow(const DocumentLine & line)
   lines_->setCellWidget(row, 3, qty);
   lines_->setCellWidget(row, 4, price);
   lines_->setCellWidget(row, 5, amount);
-  lines_->setCellWidget(row, 6, description);
+  lines_->setCellWidget(row, 6, article);
+  lines_->setCellWidget(row, 7, description);
   connect(debit, &QComboBox::currentIndexChanged, this, &DocumentDialog::refreshGate);
   connect(credit, &QComboBox::currentIndexChanged, this, &DocumentDialog::refreshGate);
   connect(nomenclature, &QComboBox::currentIndexChanged, this, &DocumentDialog::refreshGate);
   connect(qty, &QLineEdit::textChanged, this, &DocumentDialog::refreshGate);
   connect(price, &QLineEdit::textChanged, this, &DocumentDialog::refreshGate);
   connect(amount, &QLineEdit::textChanged, this, &DocumentDialog::refreshGate);
+  connect(article, &QComboBox::currentIndexChanged, this, &DocumentDialog::refreshGate);
   connect(description, &QLineEdit::textChanged, this, &DocumentDialog::refreshGate);
 }
 
@@ -537,7 +550,8 @@ Status DocumentDialog::collect(Document & out) const
     auto * qtyEdit = qobject_cast<QLineEdit *>(lines_->cellWidget(row, 3));
     auto * priceEdit = qobject_cast<QLineEdit *>(lines_->cellWidget(row, 4));
     auto * amountEdit = qobject_cast<QLineEdit *>(lines_->cellWidget(row, 5));
-    auto * description = qobject_cast<QLineEdit *>(lines_->cellWidget(row, 6));
+    auto * article = qobject_cast<QComboBox *>(lines_->cellWidget(row, 6));
+    auto * description = qobject_cast<QLineEdit *>(lines_->cellWidget(row, 7));
     if (debit == nullptr || credit == nullptr || amountEdit == nullptr) {
       return Status::fail(Error::validation(QStringLiteral("пошкоджений рядок документа")));
     }
@@ -571,6 +585,25 @@ Status DocumentDialog::collect(Document & out) const
       line.unitPrice = price.value();
     }
     line.description = description ? description->text().trimmed() : QString();
+    const std::int64_t articleId = article ? ui::selectedCustomSubconto(article) : 0;
+    if (articleId > 0) {
+      const auto assignArticle = [&](AccountId acc) {
+        if (!acc) {
+          return;
+        }
+        const auto list = session_.subconto().listForAccount(acc);
+        if (!list) {
+          return;
+        }
+        for (const AccountSubconto & setting : list.value()) {
+          if (setting.subcontoKindId == subconto_kinds::ExpenseArticle) {
+            line.setCustomSubcontoId(setting.lineNo, articleId);
+          }
+        }
+      };
+      assignArticle(line.debitAccountId);
+      assignArticle(line.creditAccountId);
+    }
     out.lines.push_back(line);
   }
   return Status::ok();

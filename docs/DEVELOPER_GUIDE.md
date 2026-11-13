@@ -3,7 +3,7 @@
 Цей файл — **робоча документація для програміста**, який вміє C++ / Qt, але не веде облік.
 `PROJECT_DOCS.md` — стислий інвентар «що вже є». Тут — **навіщо це існує, де лежить код і як не зламати книги**.
 
-Актуально для **v0.1**, схема БД **v27**. Якщо змінюєте схему — підніміть `Database::kSchemaVersion` і цей рядок.
+Актуально для **v0.1**, схема БД **v29**. Якщо змінюєте схему — підніміть `Database::kSchemaVersion` і цей рядок.
 
 ---
 
@@ -241,7 +241,7 @@ UI і тести майже завжди ходять так: `session.documents
 | ------- | ---------------- | ------------- |
 | `core/` | Примітиви без обліку | `Money`, `Quantity`, `Result`, `Ids`, `Checked` (overflow), `Sql`, `Transaction` |
 | `domain/` | Моделі + «що має вийти з форми» | `Document.h`, `ChartCodes.h`, `DocumentBlueprint.cpp`, `Vat.cpp`, `MonthClose.cpp`, `Employee.cpp`, `ExchangeDifferenceEngine.cpp` |
-| `db/` | SQLite, міграції, CRUD | `Database.cpp` (схема v27), `*Repository.cpp`, `AppPaths`, `Restore` |
+| `db/` | SQLite, міграції, CRUD | `Database.cpp` (схема v29), `*Repository.cpp`, `AppPaths`, `Restore` |
 | `posting/` | Єдине місце, що пише книгу й склад | `PostingEngine`, `DocumentValidator`, `InventoryCosting`, `AdvanceOffset` |
 | `reports/` | Читання книги в таблиці звітів | `Reports.h/cpp` |
 | `print/` | HTML/CSV друк | `PrintForms.cpp`, `AmountInWords.cpp` |
@@ -279,18 +279,20 @@ UI **не рахує ПДВ і не пише `ledger_entries`**. Він:
 | `HelpBrowser.cpp` | F1 → `help/*.html` з qrc |
 | `OpeningBalancesWizard.cpp` | Майстер першого старту (навігація id 25) |
 
-Довідники: `AccountPage`, `CounterpartyPage`, `ContractPage`, `NomenclaturePage`, `WarehousePage`, `EmployeePage`, `CurrencyPage`, `BomPage`, сторінки ОЗ/НМА/МШП.
+Довідники: `AccountPage`, `CounterpartyPage`, `ContractPage`, `SubcontoItemPage` (статті витрат), `NomenclaturePage`, `WarehousePage`, `EmployeePage`, `CurrencyPage`, `BomPage`, сторінки ОЗ/НМА/МШП.
 
 Звіти: `TrialBalancePage` (ОСВ), `AccountCardPage`, `SubcontoTrialBalancePage`, `StockPage`, `CashBookPage` (каса **і** виписка банку — той самий клас, інший рахунок), `FinancialStatementPage`, `CashFlowPage`, `IncomeBookPage`, `VatStatementPage`, `ReconciliationPage`, `ConsolidatedTaxPage`.
 
 ### 4.5. База: міграції
 
-[`src/fin/db/Database.h`](../src/fin/db/Database.h) — `kSchemaVersion = 27`.
+[`src/fin/db/Database.h`](../src/fin/db/Database.h) — `kSchemaVersion = 29`.
 [`src/fin/db/Database.cpp`](../src/fin/db/Database.cpp) — `migrate()`: якщо `MAX(schema_migrations.version) < N`, застосовує крок N.
 
 Нова колонка = **новий крок**, ніколи `CREATE TABLE` на існуючій базі користувача. Свіжа `:memory:` у тестах проганяє всі кроки з нуля.
 
 Приклад v27: `document_lines.contract_id` — договір **у рядку** (потрібно введенню залишків, де на 361/631 багато різних контрагентів).
+Приклад v28: таблиця `subconto_items` + `document_lines.custom_subcontoN_id` — довільні субконто (статті витрат).
+Приклад v29: `employees.special_seniority_code` — код підстави спецстажу для додатка Д6.
 
 ### 4.6. Репозиторії (`db/`)
 
@@ -460,17 +462,18 @@ PostingEngine::post(id)
 
 ОСВ по рахунку 361 показує «усі покупці разом». Бухгалтеру треба **по Іванову окремо**. Це **субконто** — розріз аналітики на рахунку.
 
-До 3 розрізів на рахунок (`account_subconto`, `line_no` 1..3). Види зашиті в [`Subconto.h`](../src/fin/domain/Subconto.h): контрагент, номенклатура, працівник, договір, ОЗ, НМА, МШП.
+До 3 розрізів на рахунок (`account_subconto`, `line_no` 1..3). Системні види в [`Subconto.h`](../src/fin/domain/Subconto.h): контрагент, номенклатура, працівник, договір, ОЗ, НМА, МШП. Довільні види живуть у `subconto_items` (`source_table = subconto_items`).
 
 Сід схеми (спростити):
 
 - 361 / 631 / 371 / 681: субконто 1 = контрагент (**обов’язкове**), субконто 2 = договір (**необов’язкове**, `is_required = 0`);
 - 281: номенклатура обов’язкова;
-- 661: працівник обов’язковий.
+- 661: працівник обов’язковий;
+- 91 / 92 / 93: стаття витрат (**необов’язкове**).
 
 Якщо `is_required` і значення порожнє — `DocumentValidator` блокує проведення.
 
-Заповнення при `post`: `PostingEngine::extractSubcontoSet` дивиться вид і тягне id з рядка або шапки документа. **Не вигадуйте** нові види в SQL без коду в цьому `if` — проведення не знатиме, звідки брати id.
+Заповнення при `post`: `PostingEngine::extractSubcontoSet` дивиться вид і тягне id з рядка або шапки документа. Системні види — окремі гілки `if`. Довільні (`source_table = subconto_items`) — `DocumentLine::customSubcontoId(lineNo)`. Новий системний вид без гілки в цьому `if` у книгу не потрапить.
 
 UI прив’язки: `AccountPage` (ПКМ «Субконто…»). Звіт: `SubcontoTrialBalanceReport` + `SubcontoTrialBalancePage` (один вимір або **усі виміри** деревоподібно).
 
@@ -479,7 +482,7 @@ UI прив’язки: `AccountPage` (ПКМ «Субконто…»). Звіт
 | Форма | Де поле |
 | ----- | ------- |
 | Товари / послуги / замовлення | шапка (`SalePurchaseDialogs`) |
-| БО | шапка (`DocumentDialog`) |
+| БО | шапка (`DocumentDialog`); колонка «Стаття» — `custom_subcontoN_id` |
 | Банк, каса | шапка |
 | ПН | шапка (часто прийшло «на підставі») |
 | Введення залишків | **рядок** (багато контрагентів в одному документі) |
@@ -487,7 +490,7 @@ UI прив’язки: `AccountPage` (ПКМ «Субконто…»). Звіт
 
 Друк банку підставляє `договір № … від …` у призначення (`PrintForms::bankPaymentHtml`).
 
-Довільні види («статті витрат») — у ROADMAP, **не** в коді проведення.
+Довільні види: довідник `SubcontoItemPage` (навігація id 29), CRUD `SubcontoRepository::insertItem` / `insertCustomKind`. Прив’язка — як і для системних видів, у плані рахунків.
 
 ---
 
@@ -522,7 +525,7 @@ UI прив’язки: `AccountPage` (ПКМ «Субконто…»). Звіт
 
 ### 9.4. Чесно про XML декларацій
 
-ПН XML — робочий файл для M.E.Doc. Декларації ПДВ / 4ДФ / ЄП у `DeclarationXml.cpp` — **каркас без XSD ДПС**, не файл для подачі. Не обіцяйте в UI «здати звіт».
+ПН XML — робочий файл для M.E.Doc. Декларації ПДВ / 4ДФ / ЄП / Д6 у `DeclarationXml.cpp` — каркас. Якщо є файл XSD у `~/.local/share/Finik/Finik/xsd/` або `FINIK_XSD_DIR`, `XsdValidator` перевіряє libxml2. Не обіцяйте в UI «здати звіт».
 
 ---
 
@@ -796,13 +799,17 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 
 ### 18.3. Нове субконто
 
+Системний вид (окрема таблиця: контрагенти, договори…):
+
 1. Рядок у `subconto_kinds` (міграція).
 2. Гілка в `extractSubcontoSet` **і** в `DocumentValidator` (де брати id, чи можна пропустити для банку/каси як для ОЗ).
 3. Поле в документі або рядку.
 4. UI.
 5. Тест проведення + ОСВ по субконто.
 
-Без кроку 2 рахунок «ніби з аналітикою», а в книзі порожньо.
+Довільний вид (`subconto_items`): `insertCustomKind` + елементи довідника + прив’язка в плані рахунків. Нова гілка `if` **не** потрібна — id береться з `custom_subcontoN_id`.
+
+Без кроку 2 для системного виду рахунок «ніби з аналітикою», а в книзі порожньо.
 
 ---
 
@@ -918,7 +925,7 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 | `Database.h` / `Database.cpp` | Відкриття SQLite, PRAGMA, `kSchemaVersion`, усі міграції, `backupTo`. |
 | `AppPaths.h` / `AppPaths.cpp` | AppData, `finik.sqlite`, `finik-secrets.key`, каталог бекапів. |
 | `Restore.h` / `Restore.cpp` | Відкладене відновлення бекапу при старті. |
-| `DocumentRepository` | CRUD документів і рядків (`contract_id` з v27). Нумерація — таблиця `document_sequences`. |
+| `DocumentRepository` | CRUD документів і рядків (`contract_id` з v27, `custom_subcontoN_id` з v28). Нумерація — таблиця `document_sequences`. |
 | `AccountRepository` | План рахунків, сід, прив’язка субконто. |
 | `LedgerRepository` | Читання/запис `ledger_entries` (викликає рушій). |
 | `InventoryRepository` | Рухи й залишки складу. |
@@ -934,7 +941,7 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 | `CompanyRepository` | Одна фірма на базу. |
 | `PeriodRepository` | Закриття періоду (`closed_through`), чи можна писати дату. |
 | `UserRepository` | Користувачі, хеш пароля. |
-| `SubcontoRepository` | Види субконто і прив’язка до рахунків. |
+| `SubcontoRepository` | Види субконто, прив’язка до рахунків, довільні елементи (`subconto_items`). |
 | `BomRepository` | Специфікації. |
 | `AuditLog.h` / `AuditLog.cpp` | Журнал хто провів / зняв / змінив. |
 
@@ -962,7 +969,8 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 | `bank/MonobankClient.h` / `.cpp` | API виписки Monobank. |
 | `currency/NbuRateClient.h` / `.cpp` | Курс НБУ, десятковий рядок. |
 | `edo/TaxInvoiceXml.cpp` | XML ПН. |
-| `edo/DeclarationXml.cpp` | Каркас декларацій (не XSD ДПС). |
+| `edo/DeclarationXml.cpp` | Декларації ПДВ / 4ДФ / Д1 / Д5 / Д6 / ЄП. |
+| `edo/XsdValidator.cpp` | Опційна валідація libxml2, якщо користувач поклав XSD. |
 | `edo/PayrollTaxDigest.cpp` | Дайджест для об’єднаної звітності. |
 | `prro/CheckboxClient.cpp` | Фіскалізація Checkbox. |
 | `integrity/IntegrityChecker.cpp` | Інварианти після post. |
@@ -975,7 +983,7 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 | Файл | Відповідальність |
 | ---- | ---------------- |
 | `MainWindow.h` / `.cpp` | Оболонка, дерево навігації, вкладки, меню, бекап. |
-| `DocumentDialog.h` / `.cpp` | Роутер форм + універсальна БО (Дт/Кт, контрагент, договір, працівник). |
+| `DocumentDialog.h` / `.cpp` | Роутер форм + універсальна БО (Дт/Кт, контрагент, договір, працівник, стаття витрат). |
 | `DocumentJournalPage` | Журнал документів. |
 | `SalePurchaseDialogs` | Товари, послуги продажу, рахунки, повернення, склади, замовлення, виробництво. |
 | `CashExpenseDialogs` | Каса + авансовий звіт. |
@@ -984,7 +992,7 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 | `PayrollDialog` / `VacationDialog` / `SickLeaveDialog` / `HrOrderDialog` | Зарплата й кадри. |
 | `FaDialogs` / `IaDialogs` / `MsDialogs` | ОЗ / НМА / МШП. |
 | `OpeningBalancesWizard` | Майстер стартових залишків. |
-| `AccountPage` / `CounterpartyPage` / `ContractPage` / `NomenclaturePage` / `WarehousePage` / `EmployeePage` / `CurrencyPage` / `BomPage` | Довідники. |
+| `AccountPage` / `CounterpartyPage` / `ContractPage` / `SubcontoItemPage` / `NomenclaturePage` / `WarehousePage` / `EmployeePage` / `CurrencyPage` / `BomPage` | Довідники. |
 | `FixedAssetPage` / `IntangiblePage` / `LowValuePage` | Картки активів. |
 | `TrialBalancePage` / `AccountCardPage` / `AccountAnalysisPage` / `SubcontoTrialBalancePage` | ОСВ і похідні. |
 | `StockPage` / `CashBookPage` / `CashFlowPage` / `FinancialStatementPage` / `IncomeBookPage` / `VatStatementPage` / `ReconciliationPage` | Звітні екрани. |
@@ -1016,5 +1024,5 @@ QT_QPA_PLATFORM=offscreen ./tests/fin_tests '*help*'
 - Змінюєте форму — `compose*` / `extract*` мають лишатись симетричними; перевірте `test_ui_dialogs` і `test_forms`.
 - Змінюєте текст для бухгалтера — `help/*.html` + needle в `test_help.cpp` в **одному** рядку.
 - Неясна тема обліку — розділ вище + відповідна сторінка `help/` (вона пишеться для бухгалтера, цей файл — для розробника).
-- Що свідомо **не** робити в v0.1: XSD ДПС, клієнт ПриватБанку, довільні види субконто, бюджети, CI (GitHub Actions на холді).
+- Що свідомо **не** робити в v0.1: клієнт ПриватБанку, бюджети, CI (GitHub Actions на холді). Офіційні XSD ДПС у git не класти (копірайт) — користувач кидає файли сам.
 - Пакування для встановлення без сирців: `scripts/package.sh` (`.deb` / `.tar.gz`, за наявності `linuxdeploy` — AppImage). Реліз на GitHub — вручну з `dist/`.

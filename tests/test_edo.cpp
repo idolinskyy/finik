@@ -6,7 +6,13 @@
 #include "fin/domain/Vat.h"
 #include "fin/edo/TaxInvoiceXml.h"
 #include "fin/edo/DeclarationXml.h"
+#include "fin/edo/XsdValidator.h"
 #include "fin/edo/PayrollTaxDigest.h"
+
+#include <QDir>
+#include <QFile>
+#include <QScopeGuard>
+#include <QTemporaryDir>
 
 using namespace fin;
 using namespace fin::test;
@@ -204,15 +210,20 @@ TEST_CASE("DeclarationXml builds VAT declaration XML")
   REQUIRE(xml.value().contains(QStringLiteral("<C_STI_ORIG>2650</C_STI_ORIG>")));
   REQUIRE(xml.value().contains(QStringLiteral("<R011G3>150.00</R011G3>")));
   REQUIRE(xml.value().contains(QStringLiteral("<R011G4>30.00</R011G4>")));
+  REQUIRE(xml.value().contains(QStringLiteral("<R10G4>30.00</R10G4>")));
   REQUIRE(xml.value().contains(QStringLiteral("<R101G3>50.00</R101G3>")));
   REQUIRE(xml.value().contains(QStringLiteral("<R101G4>10.00</R101G4>")));
+  REQUIRE(xml.value().contains(QStringLiteral("<R15G4>10.00</R15G4>")));
+  REQUIRE(xml.value().contains(QStringLiteral("<R16G3>20.00</R16G3>")));
   REQUIRE(xml.value().contains(QStringLiteral("<R18G3>20.00</R18G3>")));
+  REQUIRE(xml.value().contains(QStringLiteral("<HZKV>3</HZKV>")));
+  REQUIRE(validateDeclarStructure(xml.value(), QStringLiteral("J0200125.xsd")));
 
   company.vatRateBp = 700; // 7%
   Result<QString> xml7 = buildVatDeclarationXml(report, company);
   REQUIRE(xml7);
   // 30 UAH ПДВ при 7% → база ≈ 428.57
-  REQUIRE(xml7.value().contains(QStringLiteral("<R011G3>428.57</R011G3>")));
+  REQUIRE(xml7.value().contains(QStringLiteral("<R012G3>428.57</R012G3>")));
 
   CompanyProfile noSti = company;
   noSti.taxOfficeCode = 0;
@@ -251,6 +262,7 @@ TEST_CASE("every DECLAR export refuses a company card without tax office codes")
   CHECK_FALSE(buildAnnex4DfXml(payroll, company));
   CHECK_FALSE(buildAnnexEssD1Xml(payroll, company));
   CHECK_FALSE(buildAnnexD5Xml(payroll, company));
+  CHECK_FALSE(buildAnnexD6Xml({}, QDate(2026, 1, 1), QDate(2026, 3, 31), company));
 
   IncomeBook book;
   book.from = QDate(2026, 4, 1);
@@ -266,6 +278,7 @@ TEST_CASE("every DECLAR export refuses a company card without tax office codes")
   CHECK(buildVatDeclarationXml(vat, company));
   CHECK(buildBalance1MXml(balance, income, company));
   CHECK(buildConsolidatedTaxXml(payroll, company));
+  CHECK(buildAnnexD6Xml({}, QDate(2026, 1, 1), QDate(2026, 3, 31), company));
   CHECK(buildSingleTaxDeclarationXml(book, company));
 }
 
@@ -370,6 +383,78 @@ TEST_CASE("consolidated tax report from payroll and XML annex 4DF")
   REQUIRE(d5.value().contains(QStringLiteral("15.01.2026")));
   REQUIRE(d5.value().contains(QStringLiteral("R00G01I")));
   REQUIRE(validateDeclarStructure(d5.value(), QStringLiteral("J0510511.xsd")));
+
+  const Result<std::vector<Employee>> listed = session.employees().listAll();
+  REQUIRE(listed);
+  REQUIRE_FALSE(listed.value().empty());
+  Employee senior = listed.value().front();
+  senior.specialSeniorityCode = QStringLiteral("1");
+  REQUIRE(session.employees().update(senior));
+  const Result<std::vector<Employee>> people = session.employees().listAll();
+  REQUIRE(people);
+  Result<QString> d6 =
+      buildAnnexD6Xml(people.value(), report.value().from, report.value().to, company);
+  REQUIRE(d6);
+  REQUIRE(d6.value().contains(QStringLiteral("J0510611.xsd")));
+  REQUIRE(d6.value().contains(QStringLiteral("C_DOC_SUB")));
+  REQUIRE(d6.value().contains(QStringLiteral("106")));
+  REQUIRE(d6.value().contains(QStringLiteral("T1RXXXXG06S")));
+  REQUIRE(d6.value().contains(QStringLiteral(">1<")));
+  REQUIRE(validateDeclarStructure(d6.value(), QStringLiteral("J0510611.xsd")));
+}
+
+TEST_CASE("XSD validation uses dropped schema when present")
+{
+  const QString xml = QStringLiteral(
+      "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+      "<DECLAR xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+      "xsi:noNamespaceSchemaLocation=\"J0200125.xsd\">"
+      "<DECLARHEAD><C_DOC>J02</C_DOC><C_DOC_SUB>001</C_DOC_SUB>"
+      "<C_DOC_VER>25</C_DOC_VER></DECLARHEAD>"
+      "<DECLARBODY><HZ>1</HZ></DECLARBODY></DECLAR>");
+  REQUIRE(validateDeclarStructure(xml, QStringLiteral("J0200125.xsd")));
+  REQUIRE(validateAgainstXsdIfPresent(xml, QStringLiteral("J0200125.xsd")));
+
+  if (!xsdValidationAvailable()) {
+    return;
+  }
+
+  QTemporaryDir dir;
+  REQUIRE(dir.isValid());
+  QFile schema(dir.filePath(QStringLiteral("J0200125.xsd")));
+  REQUIRE(schema.open(QIODevice::WriteOnly | QIODevice::Text));
+  schema.write(R"(<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified">
+  <xs:element name="DECLAR">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:any minOccurs="0" maxOccurs="unbounded" processContents="lax"/>
+      </xs:sequence>
+      <xs:anyAttribute processContents="lax"/>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+)");
+  schema.close();
+  qputenv("FINIK_XSD_DIR", dir.path().toUtf8());
+  const auto clearXsdDir = qScopeGuard([]() { qunsetenv("FINIK_XSD_DIR"); });
+  REQUIRE(validateAgainstXsdIfPresent(xml, QStringLiteral("J0200125.xsd")));
+
+  QFile bad(dir.filePath(QStringLiteral("J0200125.xsd")));
+  REQUIRE(bad.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text));
+  bad.write(R"(<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:element name="DECLAR">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="MUST_EXIST" type="xs:string"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+</xs:schema>
+)");
+  bad.close();
+  REQUIRE_FALSE(validateAgainstXsdIfPresent(xml, QStringLiteral("J0200125.xsd")));
 }
 
 TEST_CASE("single tax declaration XML from income book")

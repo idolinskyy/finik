@@ -80,6 +80,11 @@ Result<SubcontoSet> extractSubcontoSet(QSqlDatabase db, AccountId accountId,
       val.entityId = line.employeeId ? line.employeeId.value : document.employeeId.value;
     } else if (setting.subcontoKindId == subconto_kinds::Contract) {
       val.entityId = line.contractId ? line.contractId.value : document.contractId.value;
+    } else {
+      const auto kindRes = repo.findKind(setting.subcontoKindId);
+      if (kindRes && isCustomSubcontoSource(kindRes.value().sourceTable)) {
+        val.entityId = line.customSubcontoId(setting.lineNo);
+      }
     }
     set.at(setting.lineNo) = val;
   }

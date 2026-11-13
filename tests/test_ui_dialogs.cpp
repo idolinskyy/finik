@@ -13,6 +13,7 @@
 #include "fin/domain/Contract.h"
 #include "fin/domain/Document.h"
 #include "fin/domain/Employee.h"
+#include "fin/domain/Subconto.h"
 
 #include <QComboBox>
 #include <QDateEdit>
@@ -201,6 +202,50 @@ TEST_CASE("DocumentDialog header has contract and employee for subconto", "[ui][
   REQUIRE(postedEmployee != nullptr);
   REQUIRE(postedContract->isEnabled() == false);
   REQUIRE(postedEmployee->isEnabled() == false);
+}
+
+TEST_CASE("DocumentDialog line has expense article combo", "[ui][dialogs][subconto]")
+{
+  auto session = test::openSession();
+  REQUIRE(session.accounts().seedChartIfEmpty());
+  const AccountId acc92 = test::account(session, chart::kAdminExpense);
+  const AccountId acc311 = test::account(session, chart::kBank);
+  auto items = session.subconto().listItems(subconto_kinds::ExpenseArticle, true);
+  REQUIRE(items);
+  REQUIRE_FALSE(items.value().empty());
+  const std::int64_t articleId = items.value().front().id;
+
+  Document doc;
+  doc.type = DocumentType::Manual;
+  doc.number = QStringLiteral("MAN-ART");
+  doc.date = QDate(2026, 6, 1);
+  DocumentLine row = test::line(acc92, acc311, 77700);
+  row.customSubconto1Id = articleId;
+  doc.lines.push_back(row);
+
+  DocumentDialog dialog(session, doc);
+  QCoreApplication::processEvents();
+  auto * articleCombo = dialog.findChild<QComboBox *>(QStringLiteral("customSubcontoCombo"));
+  REQUIRE(articleCombo != nullptr);
+  REQUIRE(ui::selectedCustomSubconto(articleCombo) == articleId);
+
+  QPushButton * saveBtn = nullptr;
+  for (auto * btn : dialog.findChildren<QPushButton *>()) {
+    if (btn->text() == QStringLiteral("Зберегти")) {
+      saveBtn = btn;
+      break;
+    }
+  }
+  REQUIRE(saveBtn != nullptr);
+  saveBtn->click();
+  QCoreApplication::processEvents();
+  REQUIRE(dialog.persisted() == true);
+
+  const Result<Document> stored =
+      session.documents().findByTypeAndNumber(DocumentType::Manual, QStringLiteral("MAN-ART"));
+  REQUIRE(stored);
+  REQUIRE(stored.value().lines.size() == 1);
+  CHECK(stored.value().lines[0].customSubconto1Id == articleId);
 }
 
 TEST_CASE("BankDocumentDialog header has contract for subconto", "[ui][dialogs][bank]")
